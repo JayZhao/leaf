@@ -32,6 +32,12 @@ fn generate_mobile_bindings() {
         } else {
             "".to_string()
         })
+        .clang_arg(if os == "android" {
+            let ndk_path = env::var("NDK_HOME").unwrap();
+            format!("-I{}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include", ndk_path)
+        } else {
+            "".to_string()
+        })
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .generate()
         .expect("Unable to generate bindings");
