@@ -32,7 +32,7 @@ fn generate_mobile_bindings() {
         } else {
             "".to_string()
         })
-        .clang_arg(if os == "android" {
+        .clang_arg(if os == "android" && env::consts::OS == "macos" {
             let ndk_path = env::var("NDK_HOME").unwrap();
             format!("-I{}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include", ndk_path)
         } else {
