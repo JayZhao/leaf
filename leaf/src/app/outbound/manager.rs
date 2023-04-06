@@ -27,6 +27,8 @@ use crate::proxy::amux;
 use crate::proxy::direct;
 #[cfg(feature = "outbound-drop")]
 use crate::proxy::drop;
+#[cfg(feature = "outbound-obfs")]
+use crate::proxy::obfs;
 #[cfg(feature = "outbound-quic")]
 use crate::proxy::quic;
 #[cfg(feature = "outbound-redirect")]
@@ -144,6 +146,8 @@ impl OutboundManager {
                     let stream = Box::new(socks::outbound::StreamHandler {
                         address: settings.address.clone(),
                         port: settings.port as u16,
+                        username: settings.username.clone(),
+                        password: settings.password.clone(),
                     });
                     let datagram = Box::new(socks::outbound::DatagramHandler {
                         address: settings.address.clone(),
@@ -177,6 +181,32 @@ impl OutboundManager {
                         .tag(tag.clone())
                         .stream_handler(stream)
                         .datagram_handler(datagram)
+                        .build()
+                }
+                #[cfg(feature = "outbound-obfs")]
+                "obfs" => {
+                    let settings =
+                        config::ObfsOutboundSettings::parse_from_bytes(&outbound.settings)
+                            .map_err(|e| anyhow!("invalid [{}] outbound settings: {}", &tag, e))?;
+                    let stream = match &*settings.method {
+                        "http" => Box::new(obfs::HttpObfsStreamHandler::new(
+                            settings.path.as_bytes(),
+                            settings.host.as_bytes(),
+                        )) as _,
+                        "tls" => {
+                            Box::new(obfs::TlsObfsStreamHandler::new(settings.host.as_bytes())) as _
+                        }
+                        method => {
+                            return Err(anyhow!(
+                                "invalid [{}] outbound settings: unknown obfs method {}",
+                                &tag,
+                                method
+                            ))
+                        }
+                    };
+                    HandlerBuilder::default()
+                        .tag(tag.clone())
+                        .stream_handler(stream)
                         .build()
                 }
                 #[cfg(feature = "outbound-trojan")]
@@ -237,6 +267,7 @@ impl OutboundManager {
                         settings.server_name.clone(),
                         settings.alpn.clone(),
                         certificate,
+                        settings.insecure,
                     )?);
                     HandlerBuilder::default()
                         .tag(tag.clone())
