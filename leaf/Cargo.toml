@@ -48,6 +48,7 @@ only-trojan = [
     "outbound-tls",
     "outbound-ws",
     "ring-aead",
+    "rustls",
     "rustls-tls",
     "api",
     "stat",
