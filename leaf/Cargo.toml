@@ -34,6 +34,24 @@ default-openssl = [
     "openssl-tls",
 ]
 
+only-trojan = [
+    "config-conf",
+    "inbound-socks",
+    "inbound-tun",
+    "outbound-direct",
+    "outbound-drop",
+    "outbound-trojan",
+    "outbound-failover",
+    "outbound-static",
+    "outbound-tryall",
+    "outbound-chain",
+    "outbound-tls",
+    "outbound-ws",
+    "rustls-tls",
+    "api",
+    "stat",
+]
+
 # Grouping all features
 all-configs = [
     "config-conf",
