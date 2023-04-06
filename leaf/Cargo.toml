@@ -35,7 +35,7 @@ default-openssl = [
 ]
 
 only-trojan = [
-    "config-conf",
+    "all-configs",
     "inbound-socks",
     "inbound-tun",
     "outbound-direct",
