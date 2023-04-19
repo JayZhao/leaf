@@ -18,6 +18,10 @@ default-ring = [
     "leaf/default-ring",
 ]
 
+only-trojan = [
+    "leaf/only-trojan",
+]
+
 default-openssl = [
     "leaf/default-openssl",
 ]
