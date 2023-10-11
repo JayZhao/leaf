@@ -8,6 +8,7 @@ use futures::{
     task::{Context, Poll},
 };
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tracing::info;
 
 use crate::{proxy::*, session::*};
 
@@ -163,6 +164,22 @@ impl Counter {
     }
 }
 
+#[inline]
+fn log_session_end(c: &Counter) {
+    info!(
+        "[{}] [{}] [{}] [{}] [{}] [{}] [{}] [END]",
+        c.sess
+            .forwarded_source
+            .unwrap_or_else(|| c.sess.source.ip()),
+        c.sess.network,
+        c.sess.inbound_tag,
+        c.sess.outbound_tag,
+        c.sess.destination,
+        c.bytes_sent(),
+        c.bytes_recvd(),
+    );
+}
+
 pub struct StatManager {
     pub counters: Vec<Counter>,
 }
@@ -182,7 +199,8 @@ impl StatManager {
                 let mut i = 0;
                 while i < sm.counters.len() {
                     if sm.counters[i].recv_completed() && sm.counters[i].send_completed() {
-                        sm.counters.swap_remove(i);
+                        let c = sm.counters.swap_remove(i);
+                        log_session_end(&c);
                     } else {
                         i += 1;
                     }

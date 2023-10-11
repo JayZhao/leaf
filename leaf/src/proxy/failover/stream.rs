@@ -4,10 +4,10 @@ use async_trait::async_trait;
 use futures::future::BoxFuture;
 use futures::future::{abortable, AbortHandle};
 use futures::FutureExt;
-use log::*;
 use lru_time_cache::LruCache;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
+use tracing::{debug, trace};
 
 use crate::{app::SyncDnsClient, proxy::*, session::*};
 
@@ -100,6 +100,7 @@ impl OutboundStreamHandler for Handler {
     async fn handle<'a>(
         &'a self,
         sess: &'a Session,
+        _lhs: Option<&mut AnyStream>,
         _stream: Option<AnyStream>,
     ) -> io::Result<AnyStream> {
         *self.last_active.lock().await = Instant::now();
@@ -123,6 +124,7 @@ impl OutboundStreamHandler for Handler {
                     Duration::from_secs(self.fail_timeout as u64),
                     a.stream()?.handle(
                         sess,
+                        None,
                         connect_stream_outbound(sess, self.dns_client.clone(), a).await?,
                     ),
                 )
@@ -135,6 +137,8 @@ impl OutboundStreamHandler for Handler {
 
         let schedule = self.schedule.lock().await.clone();
 
+        // Use the last resort outbound if all outbounds have failed in
+        // the last health check.
         if schedule.is_empty() && self.last_resort.is_some() {
             let a = &self.last_resort.as_ref().unwrap();
             debug!(
@@ -146,6 +150,7 @@ impl OutboundStreamHandler for Handler {
                 .stream()?
                 .handle(
                     sess,
+                    None,
                     connect_stream_outbound(sess, self.dns_client.clone(), a).await?,
                 )
                 .await;
@@ -159,21 +164,24 @@ impl OutboundStreamHandler for Handler {
             let a = &self.actors[actor_idx];
 
             debug!(
-                "failover handles tcp [{}] to [{}]",
+                "[{}] handles [{}:{}] to [{}]",
+                a.tag(),
+                sess.network,
                 sess.destination,
                 a.tag()
             );
 
-            match timeout(
-                Duration::from_secs(self.fail_timeout as u64),
-                a.stream()?.handle(
-                    sess,
-                    connect_stream_outbound(sess, self.dns_client.clone(), a).await?,
-                ),
-            )
-            .await
-            {
-                // return before timeout
+            let try_outbound = async move {
+                a.stream()?
+                    .handle(
+                        sess,
+                        None,
+                        connect_stream_outbound(sess, self.dns_client.clone(), a).await?,
+                    )
+                    .await
+            };
+
+            match timeout(Duration::from_secs(self.fail_timeout as u64), try_outbound).await {
                 Ok(t) => match t {
                     Ok(v) => {
                         // Only cache for fallback actors.
@@ -188,8 +196,9 @@ impl OutboundStreamHandler for Handler {
                     }
                     Err(e) => {
                         trace!(
-                            "[{}] failed to handle [{}]: {}",
+                            "[{}] failed to handle [{}:{}]: {}",
                             a.tag(),
+                            sess.network,
                             sess.destination,
                             e,
                         );
@@ -198,14 +207,31 @@ impl OutboundStreamHandler for Handler {
                 },
                 Err(e) => {
                     trace!(
-                        "[{}] failed to handle [{}]: {}",
+                        "[{}] failed to handle [{}:{}]: {}",
                         a.tag(),
+                        sess.network,
                         sess.destination,
                         e,
                     );
                     continue;
                 }
             }
+        }
+
+        if let Some(a) = self.last_resort.as_ref() {
+            debug!(
+                "failover handles tcp [{}] to last resort [{}]",
+                sess.destination,
+                a.tag()
+            );
+            return a
+                .stream()?
+                .handle(
+                    sess,
+                    None,
+                    connect_stream_outbound(sess, self.dns_client.clone(), a).await?,
+                )
+                .await;
         }
 
         Err(io::Error::new(

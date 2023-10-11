@@ -5,14 +5,14 @@ use std::io::BufReader;
 use anyhow::Result;
 use async_trait::async_trait;
 use futures::TryFutureExt;
-use log::*;
+use tracing::trace;
 
 #[cfg(feature = "rustls-tls")]
 use {
     std::sync::Arc,
     tokio_rustls::{
-        rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore, ServerName},
-        webpki, TlsConnector,
+        rustls::{Certificate, ClientConfig, OwnedTrustAnchor, RootCertStore, ServerName},
+        TlsConnector,
     },
 };
 
@@ -31,7 +31,7 @@ mod dangerous {
     use std::time::SystemTime;
     use tokio_rustls::rustls::{
         client::{ServerCertVerified, ServerCertVerifier},
-        Certificate, ServerName,
+        Certificate, Error, ServerName,
     };
 
     pub(super) struct NotVerified;
@@ -41,12 +41,11 @@ mod dangerous {
             &self,
             _end_entity: &Certificate,
             _intermediates: &[Certificate],
-            server_name: &ServerName,
+            _server_name: &ServerName,
             _scts: &mut dyn Iterator<Item = &[u8]>,
             _ocsp_response: &[u8],
             _now: SystemTime,
-        ) -> core::result::Result<ServerCertVerified, rustls::Error> {
-            log::debug!("TLS cert for {:?} not verified", server_name);
+        ) -> core::result::Result<ServerCertVerified, Error> {
             Ok(ServerCertVerified::assertion())
         }
     }
@@ -73,25 +72,19 @@ impl Handler {
             if let Some(cert) = certificate {
                 let mut pem = BufReader::new(File::open(cert)?);
                 let certs = rustls_pemfile::certs(&mut pem)?;
-                let trust_anchors = certs.iter().map(|cert| {
-                    let ta = webpki::TrustAnchor::try_from_cert_der(&cert[..]).unwrap(); // FIXME
-                    OwnedTrustAnchor::from_subject_spki_name_constraints(
-                        ta.subject,
-                        ta.spki,
-                        ta.name_constraints,
-                    )
-                });
-                root_cert_store.add_server_trust_anchors(trust_anchors);
+                for cert in certs.into_iter().map(Certificate) {
+                    root_cert_store.add(&cert)?;
+                }
             } else {
-                root_cert_store.add_server_trust_anchors(
-                    webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+                root_cert_store.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(
+                    |ta| {
                         OwnedTrustAnchor::from_subject_spki_name_constraints(
                             ta.subject,
                             ta.spki,
                             ta.name_constraints,
                         )
-                    }),
-                );
+                    },
+                ));
             }
             let mut config = ClientConfig::builder()
                 .with_safe_defaults()
@@ -146,6 +139,7 @@ impl OutboundStreamHandler for Handler {
     async fn handle<'a>(
         &'a self,
         sess: &'a Session,
+        _lhs: Option<&mut AnyStream>,
         stream: Option<AnyStream>,
     ) -> io::Result<AnyStream> {
         // TODO optimize, dont need copy
@@ -154,10 +148,10 @@ impl OutboundStreamHandler for Handler {
         } else {
             sess.destination.host()
         };
-        trace!("wrapping tls with name {}", &name);
         if let Some(stream) = stream {
             #[cfg(feature = "rustls-tls")]
             {
+                trace!("handling TLS {} with rustls", &name);
                 let connector = TlsConnector::from(self.tls_config.clone());
                 let domain = ServerName::try_from(name.as_str()).map_err(|e| {
                     io::Error::new(
@@ -179,6 +173,7 @@ impl OutboundStreamHandler for Handler {
             }
             #[cfg(feature = "openssl-tls")]
             {
+                trace!("handling TLS {} with openssl", &name);
                 let mut ssl = Ssl::new(self.ssl_connector.context()).map_err(|e| {
                     io::Error::new(
                         io::ErrorKind::InvalidInput,

@@ -8,17 +8,17 @@ use async_trait::async_trait;
 use futures::future::select_ok;
 use futures::stream::Stream;
 use futures::TryFutureExt;
-use log::*;
 use socket2::SockRef;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{TcpSocket, TcpStream, UdpSocket};
 use tokio::time::timeout;
+use tracing::trace;
 
 #[cfg(unix)]
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsFd, AsRawFd};
 #[cfg(windows)]
-use std::os::windows::io::AsRawSocket;
+use std::os::windows::io::{AsRawSocket, AsSocket};
 #[cfg(target_os = "android")]
 use {
     std::os::unix::io::RawFd, tokio::io::AsyncReadExt, tokio::io::AsyncWriteExt,
@@ -48,6 +48,8 @@ pub mod drop;
 pub mod failover;
 #[cfg(feature = "inbound-http")]
 pub mod http;
+#[cfg(feature = "outbound-obfs")]
+pub mod obfs;
 #[cfg(any(feature = "inbound-quic", feature = "outbound-quic"))]
 pub mod quic;
 #[cfg(feature = "outbound-redirect")]
@@ -56,8 +58,6 @@ pub mod redirect;
 pub mod select;
 #[cfg(any(feature = "inbound-shadowsocks", feature = "outbound-shadowsocks"))]
 pub mod shadowsocks;
-#[cfg(feature = "outbound-obfs")]
-pub mod obfs;
 #[cfg(any(feature = "inbound-socks", feature = "outbound-socks"))]
 pub mod socks;
 #[cfg(feature = "outbound-static")]
@@ -163,7 +163,7 @@ async fn protect_socket(fd: RawFd) -> io::Result<()> {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-trait BindSocket: AsRawFd {
+trait BindSocket: AsFd {
     fn bind(&self, bind_addr: &SocketAddr) -> io::Result<()>;
 }
 
@@ -232,14 +232,14 @@ async fn bind_socket<T: BindSocket>(socket: &T, indicator: &SocketAddr) -> io::R
 
                     let ret = match indicator {
                         SocketAddr::V4(..) => libc::setsockopt(
-                            socket.as_raw_fd(),
+                            socket.as_fd().as_raw_fd(),
                             libc::IPPROTO_IP,
                             libc::IP_BOUND_IF,
                             &ifidx as *const _ as *const libc::c_void,
                             std::mem::size_of::<libc::c_uint>() as libc::socklen_t,
                         ),
                         SocketAddr::V6(..) => libc::setsockopt(
-                            socket.as_raw_fd(),
+                            socket.as_fd().as_raw_fd(),
                             libc::IPPROTO_IPV6,
                             libc::IPV6_BOUND_IF,
                             &ifidx as *const _ as *const libc::c_void,
@@ -257,7 +257,7 @@ async fn bind_socket<T: BindSocket>(socket: &T, indicator: &SocketAddr) -> io::R
                 unsafe {
                     let ifa = CString::new(iface.as_bytes()).unwrap();
                     let ret = libc::setsockopt(
-                        socket.as_raw_fd(),
+                        socket.as_fd().as_raw_fd(),
                         libc::SOL_SOCKET,
                         libc::SO_BINDTODEVICE,
                         ifa.as_ptr() as *const libc::c_void,
@@ -334,12 +334,12 @@ fn apply_socket_opts_internal(s: SockRef) -> io::Result<()> {
 }
 
 #[cfg(unix)]
-fn apply_socket_opts<S: AsRawFd>(socket: &S) -> io::Result<()> {
+fn apply_socket_opts<S: AsFd>(socket: &S) -> io::Result<()> {
     let sock_ref = SockRef::from(socket);
     apply_socket_opts_internal(sock_ref)
 }
 #[cfg(windows)]
-fn apply_socket_opts<S: AsRawSocket>(socket: &S) -> io::Result<()> {
+fn apply_socket_opts<S: AsSocket>(socket: &S) -> io::Result<()> {
     let sock_ref = SockRef::from(socket);
     apply_socket_opts_internal(sock_ref)
 }
@@ -567,7 +567,12 @@ pub trait OutboundStreamHandler<S = AnyStream>: Send + Sync + Unpin {
 
     /// Handles a session with the given stream. On success, returns a
     /// stream wraps the incoming stream.
-    async fn handle<'a>(&'a self, sess: &'a Session, stream: Option<S>) -> io::Result<S>;
+    async fn handle<'a>(
+        &'a self,
+        sess: &'a Session,
+        lhs: Option<&mut S>,
+        stream: Option<S>,
+    ) -> io::Result<S>;
 }
 
 type AnyOutboundStreamHandler = Box<dyn OutboundStreamHandler>;

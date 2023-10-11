@@ -3,10 +3,10 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use futures::{sink::SinkExt, stream::StreamExt};
-use log::*;
 use protobuf::Message;
 use tokio::sync::mpsc::channel as tokio_channel;
 use tokio::sync::mpsc::{Receiver as TokioReceiver, Sender as TokioSender};
+use tracing::{debug, error, info, trace, warn};
 use tun::{self, TunPacket};
 
 use crate::{
@@ -49,7 +49,7 @@ async fn handle_inbound_stream(
             // still have a chance to sniff the request domain
             // for TLS traffic in dispatcher.
             if remote_addr.port() != 443 {
-                log::debug!(
+                debug!(
                     "No paired domain found for this fake IP: {}, connection is rejected.",
                     &remote_addr.ip()
                 );
@@ -103,7 +103,7 @@ async fn handle_inbound_datagram(
     loop {
         match lr.recv_from().await {
             Err(e) => {
-                log::warn!("Failed to accept a datagram from netstack: {}", e);
+                warn!("Failed to accept a datagram from netstack: {}", e);
             }
             Ok((data, src_addr, dst_addr)) => {
                 // Fake DNS logic.
@@ -137,7 +137,7 @@ async fn handle_inbound_datagram(
                     if let Some(domain) = fakedns.query_domain(&dst_addr.ip()).await {
                         SocksAddr::Domain(domain, dst_addr.port())
                     } else {
-                        log::debug!(
+                        debug!(
                             "No paired domain found for this fake IP: {}, datagram is rejected.",
                             &dst_addr.ip()
                         );
@@ -223,6 +223,11 @@ pub fn new(
         assert!(settings.fd == -1, "tun-auto is not compatible with tun-fd");
     }
 
+    let (stack, mut tcp_listener, udp_socket) = netstack::NetStack::with_buffer_size(
+        *crate::option::NETSTACK_OUTPUT_CHANNEL_SIZE,
+        *crate::option::NETSTACK_UDP_UPLINK_CHANNEL_SIZE,
+    )?;
+
     Ok(Box::pin(async move {
         let fakedns = Arc::new(FakeDns::new(fake_dns_mode));
         for filter in fake_dns_filters.into_iter() {
@@ -232,10 +237,6 @@ pub fn new(
         let inbound_tag = inbound.tag.clone();
         let framed = tun.into_framed();
         let (mut tun_sink, mut tun_stream) = framed.split();
-        let (stack, mut tcp_listener, udp_socket) = netstack::NetStack::with_buffer_size(
-            *crate::option::NETSTACK_OUTPUT_CHANNEL_SIZE,
-            *crate::option::NETSTACK_UDP_UPLINK_CHANNEL_SIZE,
-        );
         let (mut stack_sink, mut stack_stream) = stack.split();
 
         let mut futs: Vec<Runner> = Vec::new();
@@ -243,10 +244,16 @@ pub fn new(
         // Reads packet from stack and sends to TUN.
         futs.push(Box::pin(async move {
             while let Some(pkt) = stack_stream.next().await {
-                if let Ok(pkt) = pkt {
-                    if let Err(e) = tun_sink.send(TunPacket::new(pkt)).await {
-                        // TODO Return the error
-                        log::error!("Sending packet to TUN failed: {}", e);
+                match pkt {
+                    Ok(pkt) => {
+                        if let Err(e) = tun_sink.send(TunPacket::new(pkt)).await {
+                            // TODO Return the error
+                            error!("Sending packet to TUN failed: {}", e);
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        error!("Net stack erorr: {}", e);
                         return;
                     }
                 }
@@ -256,9 +263,15 @@ pub fn new(
         // Reads packet from TUN and sends to stack.
         futs.push(Box::pin(async move {
             while let Some(pkt) = tun_stream.next().await {
-                if let Ok(pkt) = pkt {
-                    if let Err(e) = stack_sink.send(pkt.into_bytes().into()).await {
-                        log::error!("Sending packet to NetStack failed: {}", e);
+                match pkt {
+                    Ok(pkt) => {
+                        if let Err(e) = stack_sink.send(pkt.into_bytes().into()).await {
+                            error!("Sending packet to NetStack failed: {}", e);
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        error!("TUN error: {}", e);
                         return;
                     }
                 }
