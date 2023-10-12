@@ -21,9 +21,13 @@ fi
 rustup target add x86_64-apple-darwin
 rustup target add aarch64-apple-darwin
 rustup target add aarch64-apple-ios
+rustup target add x86_64-apple-ios
+rustup target add aarch64-apple-ios-sim
 cargo build -p $package $release_flag --no-default-features --features "only-trojan" --target x86_64-apple-darwin
 cargo build -p $package $release_flag --no-default-features --features "only-trojan" --target aarch64-apple-darwin
 cargo build -p $package $release_flag --no-default-features --features "only-trojan" --target aarch64-apple-ios
+cargo build -p $package $release_flag --no-default-features --features "default-ring outbound-quic" --target aarch64-apple-ios-sim
+cargo build -p $package $release_flag --no-default-features --features "default-openssl outbound-quic" --target x86_64-apple-ios
 
 # Directories to put the libraries.
 rm -rf target/apple/$mode
