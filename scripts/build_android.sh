@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 
-set -x
+set -e
 
 name=leaf
 package=leaf-ffi
