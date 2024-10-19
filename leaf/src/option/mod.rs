@@ -104,7 +104,7 @@ lazy_static! {
     pub static ref TLS_DOMAIN_SNIFFING: bool = {
         get_env_var_or_else(
             "TLS_DOMAIN_SNIFFING",
-            || get_env_var_or("DOMAIN_SNIFFING", false), // deprecated env var
+            || get_env_var_or("DOMAIN_SNIFFING", true), // deprecated env var
         )
     };
 
@@ -112,20 +112,20 @@ lazy_static! {
     /// connections a little bit, depending on whether the sniff can make an early
     /// return.
     pub static ref TLS_DOMAIN_SNIFFING_ALL: bool = {
-        get_env_var_or("TLS_DOMAIN_SNIFFING_ALL", false)
+        get_env_var_or("TLS_DOMAIN_SNIFFING_ALL", true)
     };
 
     /// Turn on HTTP host sniffing, by default only perform on connections with
     /// destination port 80.
     pub static ref HTTP_DOMAIN_SNIFFING: bool = {
-        get_env_var_or("HTTP_DOMAIN_SNIFFING", false)
+        get_env_var_or("HTTP_DOMAIN_SNIFFING", true)
     };
 
     /// Turn on HTTP host sniffing for all TCP connections, this may slow down the
     /// connections a little bit, depending on whether the sniff can make an early
     /// return.
     pub static ref HTTP_DOMAIN_SNIFFING_ALL: bool = {
-        get_env_var_or("HTTP_DOMAIN_SNIFFING_ALL", false)
+        get_env_var_or("HTTP_DOMAIN_SNIFFING_ALL", true)
     };
 
     /// Uplink timeout after downlink EOF.
