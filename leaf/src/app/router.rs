@@ -511,7 +511,7 @@ impl Router {
             }
         }
         if sess.destination.is_domain() && self.domain_resolve {
-            let ips = {
+            let ips = match {
                 self.dns_client
                     .read()
                     .await
@@ -521,8 +521,19 @@ impl Router {
                             .ok_or_else(|| anyhow!("illegal domain name"))?,
                     )
                     .map_err(|e| anyhow!("lookup {} failed: {}", sess.destination.host(), e))
-                    .await?
+                    .await
+            } {
+                Ok(ips) => ips,
+                Err(e) => {
+                    return Err(anyhow!(
+                        "no matching rules for {}:{} (DNS resolution failed: {})",
+                        sess.network,
+                        sess.destination,
+                        e
+                    ));
+                }
             };
+
             if !ips.is_empty() {
                 let mut new_sess = sess.clone();
                 new_sess.destination = SocksAddr::from((ips[0], sess.destination.port()));
@@ -536,9 +547,20 @@ impl Router {
                         return Ok(&rule.target);
                     }
                 }
+                return Err(anyhow!(
+                    "no matching rules for {}:{} (resolved to {})",
+                    sess.network,
+                    sess.destination,
+                    ips[0]
+                ));
             }
         }
-        Err(anyhow!("no matching rules"))
+        Err(anyhow!(
+            "no matching rules for {}:{} (total {} rules)", 
+            sess.network,
+            sess.destination,
+            self.rules.len()
+        ))
     }
 }
 
