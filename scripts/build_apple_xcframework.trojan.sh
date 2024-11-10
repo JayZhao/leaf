@@ -23,24 +23,20 @@ if [ ! -f "Cargo.toml" ] || [ ! -d "leaf" ] || [ ! -d "leaf-cli" ] || [ ! -d "le
 fi
 
 # 添加目标架构
-rustup target add aarch64-apple-ios-sim    # 用于 "My Mac (Designed for iPad)" 调试
+rustup target add aarch64-apple-ios-sim    # 用于 "My Mac (Designed for iPad)"
 rustup target add aarch64-apple-ios        # 用于实机运行
 
-# 为调试版本设置更完整的编译标记
-export RUSTFLAGS="-C debuginfo=2 -C symbol-mangling-version=v0"
-export CARGO_PROFILE_DEBUG_DEBUG=true
-export CARGO_PROFILE_DEBUG_SPLIT_DEBUGINFO="packed"  # 或者 "unpacked"
+# 设置最高级别优化
+export RUSTFLAGS="-C opt-level=3 -C target-cpu=native -C codegen-units=1"
 
-# iOS 模拟器 debug 版本
+# iOS 模拟器 release 版本
 cargo build -p $package \
+    --release \
     --no-default-features \
     --features "trojan-only" \
     --target aarch64-apple-ios-sim
 
 # iOS 实机 release 版本
-unset RUSTFLAGS
-unset CARGO_PROFILE_DEBUG_DEBUG
-unset CARGO_PROFILE_DEBUG_SPLIT_DEBUGINFO
 cargo build -p $package \
     --release \
     --no-default-features \
@@ -52,11 +48,11 @@ cargo install --force cbindgen
 # 准备目录
 rm -rf target/apple/universal
 mkdir -p target/apple/universal/include
-mkdir -p target/apple/universal/ios-sim-debug    # iOS 模拟器调试版
-mkdir -p target/apple/universal/ios-release      # iOS 实机发布版
+mkdir -p target/apple/universal/ios-sim-release    # iOS 模拟器发布版
+mkdir -p target/apple/universal/ios-release        # iOS 实机发布版
 
-# 复制库文件（移除 dsymutil 步骤）
-cp target/aarch64-apple-ios-sim/debug/$lib target/apple/universal/ios-sim-debug/
+# 复制库文件
+cp target/aarch64-apple-ios-sim/release/$lib target/apple/universal/ios-sim-release/
 cp target/aarch64-apple-ios/release/$lib target/apple/universal/ios-release/
 
 # 生成头文件
@@ -72,9 +68,9 @@ module $name {
 }
 EOF
 
-# 创建 XCFramework（移除 debug-symbols 参数）
+# 创建 XCFramework
 xcodebuild -create-xcframework \
-    -library target/apple/universal/ios-sim-debug/$lib \
+    -library target/apple/universal/ios-sim-release/$lib \
     -headers target/apple/universal/include \
     -library target/apple/universal/ios-release/$lib \
     -headers target/apple/universal/include \
