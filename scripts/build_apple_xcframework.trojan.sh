@@ -2,8 +2,6 @@
 
 set -ex
 
-mode=release
-release_flag=--release
 package=leaf-ffi
 name=leaf
 lib=lib$name.a
@@ -11,75 +9,76 @@ lib=lib$name.a
 # The script is assumed to run in the root of the workspace
 base=$(dirname "$0")
 
-# Debug or release build?
-if [ "$1" = "debug" ]; then
-	mode=debug
-	release_flag=
+export IPHONEOS_DEPLOYMENT_TARGET=10.0
+
+# Strict workspace root check
+if [ ! -f "Cargo.toml" ] || [ ! -d "leaf" ] || [ ! -d "leaf-cli" ] || [ ! -d "leaf-ffi" ]; then
+    echo "错误: 此脚本必须在工作空间根目录下运行！"
+    echo "请确保当前目录包含以下文件和目录："
+    echo "  - Cargo.toml"
+    echo "  - leaf/"
+    echo "  - leaf-cli/"
+    echo "  - leaf-ffi/"
+    exit 1
 fi
 
-export IPHONEOS_DEPLOYMENT_TARGET=10.0
-export MACOSX_DEPLOYMENT_TARGET=10.12
+# 添加目标架构
+rustup target add aarch64-apple-ios-sim    # 用于 "My Mac (Designed for iPad)" 调试
+rustup target add aarch64-apple-ios        # 用于实机运行
 
-# Build for all desired targets
-rustup target add x86_64-apple-darwin
-rustup target add aarch64-apple-darwin
-rustup target add aarch64-apple-ios
-rustup target add x86_64-apple-ios
-rustup target add aarch64-apple-ios-sim
-cargo build -p $package $release_flag --no-default-features --features "trojan-only" --target x86_64-apple-darwin
-cargo build -p $package $release_flag --no-default-features --features "trojan-only" --target aarch64-apple-darwin
-cargo build -p $package $release_flag --no-default-features --features "trojan-only" --target aarch64-apple-ios
-cargo build -p $package $release_flag --no-default-features --features "trojan-only" --target x86_64-apple-ios
-cargo build -p $package $release_flag --no-default-features --features "trojan-only" --target aarch64-apple-ios-sim
+# 为调试版本设置更完整的编译标记
+export RUSTFLAGS="-C debuginfo=2 -C symbol-mangling-version=v0"
+export CARGO_PROFILE_DEBUG_DEBUG=true
+export CARGO_PROFILE_DEBUG_SPLIT_DEBUGINFO="packed"  # 或者 "unpacked"
+
+# iOS 模拟器 debug 版本
+cargo build -p $package \
+    --no-default-features \
+    --features "trojan-only" \
+    --target aarch64-apple-ios-sim
+
+# iOS 实机 release 版本
+unset RUSTFLAGS
+unset CARGO_PROFILE_DEBUG_DEBUG
+unset CARGO_PROFILE_DEBUG_SPLIT_DEBUGINFO
+cargo build -p $package \
+    --release \
+    --no-default-features \
+    --features "trojan-only" \
+    --target aarch64-apple-ios
 
 cargo install --force cbindgen
 
-# Directories to put the libraries.
-rm -rf target/apple/$mode
-mkdir -p target/apple/$mode/include
-mkdir -p target/apple/$mode/ios
-mkdir -p target/apple/$mode/ios-sim
-mkdir -p target/apple/$mode/macos
+# 准备目录
+rm -rf target/apple/universal
+mkdir -p target/apple/universal/include
+mkdir -p target/apple/universal/ios-sim-debug    # iOS 模拟器调试版
+mkdir -p target/apple/universal/ios-release      # iOS 实机发布版
 
-# Put built libraries to folders where we can find them easier later
-cp target/aarch64-apple-ios/$mode/$lib target/apple/$mode/ios/
-lipo -create \
-	-arch x86_64 target/x86_64-apple-ios/$mode/$lib \
-	-arch arm64 target/aarch64-apple-ios-sim/$mode/$lib \
-	-output target/apple/$mode/ios-sim/$lib
-# Create a single library for multiple archs
-lipo -create \
-	-arch x86_64 target/x86_64-apple-darwin/$mode/$lib \
-	-arch arm64 target/aarch64-apple-darwin/$mode/$lib \
-	-output target/apple/$mode/macos/$lib
-# Generate the header file
+# 复制库文件（移除 dsymutil 步骤）
+cp target/aarch64-apple-ios-sim/debug/$lib target/apple/universal/ios-sim-debug/
+cp target/aarch64-apple-ios/release/$lib target/apple/universal/ios-release/
+
+# 生成头文件
 cbindgen \
-	--config $package/cbindgen.toml \
-	$package/src/lib.rs > target/apple/$mode/include/$name.h
+    --config $package/cbindgen.toml \
+    $package/src/lib.rs > target/apple/universal/include/$name.h
 
-wd="$base/../target/apple/$mode"
-
-# Remove existing artifact
-rm -rf "$wd/$name.xcframework"
-
-# A modulemap is required for the compiler to find the module when using Swift
-cat << EOF > "$wd/include/module.modulemap"
+# 创建 modulemap
+cat << EOF > "target/apple/universal/include/module.modulemap"
 module $name {
     header "$name.h"
     export *
 }
 EOF
 
-# Create the XCFramework packaging both iOS and macOS static libraries, so we can
-# use a single XCFramework for both platforms.
+# 创建 XCFramework（移除 debug-symbols 参数）
 xcodebuild -create-xcframework \
-	-library "$wd/ios/$lib" \
-	-headers "$wd/include" \
-	-library "$wd/ios-sim/$lib" \
-	-headers "$wd/include" \
-	-library "$wd/macos/$lib" \
-	-headers "$wd/include" \
-	-output "$wd/$name.xcframework"
+    -library target/apple/universal/ios-sim-debug/$lib \
+    -headers target/apple/universal/include \
+    -library target/apple/universal/ios-release/$lib \
+    -headers target/apple/universal/include \
+    -output target/apple/universal/$name.xcframework
 
-ls $wd/$name.xcframework
-open $wd
+ls target/apple/universal/$name.xcframework
+open target/apple/universal
