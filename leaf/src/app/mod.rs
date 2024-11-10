@@ -9,6 +9,7 @@ pub mod logger;
 pub mod nat_manager;
 pub mod outbound;
 pub mod router;
+mod trie;
 
 #[cfg(feature = "stat")]
 pub mod stat_manager;

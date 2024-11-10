@@ -12,6 +12,7 @@ use tracing::{debug, warn};
 use crate::app::SyncDnsClient;
 use crate::config;
 use crate::session::{Network, Session, SocksAddr};
+use crate::app::trie::TrieNode;
 
 pub trait Condition: Send + Sync + Unpin {
     fn apply(&self, sess: &Session) -> bool;
@@ -253,45 +254,38 @@ impl Condition for DomainKeywordMatcher {
     }
 }
 
-struct DomainSuffixMatcher {
-    value: String,
+pub struct DomainSuffixMatcher {
+    trie: TrieNode,
 }
 
 impl DomainSuffixMatcher {
-    fn new(value: String) -> Self {
-        DomainSuffixMatcher { value }
-    }
-}
-
-// test if domain1 is a subdomain of domain2
-// examples:
-//   video.google.com vs google.com -> true
-//   video.google.com vs gle.com -> false
-//   google.com vs video.google.com -> false
-fn is_sub_domain(d1: &str, d2: &str) -> bool {
-    let d1_parts: Vec<&str> = d1.split('.').rev().collect();
-    let d2_parts: Vec<&str> = d2.split('.').rev().collect();
-    if d1_parts.len() < d2_parts.len() {
-        return false;
-    }
-    let d2_enum = d2_parts.iter().enumerate();
-    for (i, v) in d2_enum {
-        if &d1_parts[i] != v {
-            return false;
+    fn new(domains: Vec<String>, _target: String) -> Self {
+        let mut trie = TrieNode::new();
+        for domain in domains {
+            trie.insert(&domain);
         }
+        DomainSuffixMatcher { trie }
     }
-    true
 }
 
 impl Condition for DomainSuffixMatcher {
     fn apply(&self, sess: &Session) -> bool {
+        debug!("开始域名后缀匹配检查");
+        debug!("会话目标: {:?}", sess.destination);
+        
         if sess.destination.is_domain() {
             if let Some(domain) = sess.destination.domain() {
-                if is_sub_domain(domain, &self.value) {
-                    debug!("[{}] matches domain suffix [{}]", domain, &self.value);
+                debug!("检查域名: {}", domain);
+                if self.trie.matches(domain) {
+                    debug!("域名 {} 匹配成功", domain);
                     return true;
                 }
+                debug!("域名 {} 匹配失败", domain);
+            } else {
+                debug!("无法获取域名");
             }
+        } else {
+            debug!("目标不是域名类型");
         }
         false
     }
@@ -326,24 +320,52 @@ struct DomainMatcher {
 }
 
 impl DomainMatcher {
-    fn new(domains: &mut [config::router::rule::Domain]) -> Self {
-        let mut cond_or = ConditionOr::new();
-        for rr_domain in domains.iter_mut() {
-            let filter = std::mem::take(&mut rr_domain.value);
-            match rr_domain.type_.unwrap() {
+    fn new(domains: &mut [config::router::rule::Domain], target_tag: String) -> Self {
+        debug!("创建新的 DomainMatcher, 目标标签: {}", target_tag);
+        debug!("总规则数: {}", domains.len());
+        
+        let mut domain_cond = ConditionOr::new();
+        let mut suffix_domains = Vec::new();
+        let mut other_matchers = ConditionOr::new();
+        
+        for (i, domain) in domains.iter_mut().enumerate() {
+            let value = std::mem::take(&mut domain.value);
+            debug!("处理第 {} 条规则, 值: {}", i + 1, value);
+            
+            match domain.type_.unwrap() {
                 config::router::rule::domain::Type::PLAIN => {
-                    cond_or.add(Box::new(DomainKeywordMatcher::new(filter)));
+                    debug!("PLAIN 类型规则: {}", value);
+                    other_matchers.add(Box::new(DomainKeywordMatcher::new(value)));
                 }
                 config::router::rule::domain::Type::DOMAIN => {
-                    cond_or.add(Box::new(DomainSuffixMatcher::new(filter)));
+                    debug!("DOMAIN-SUFFIX 类型规则: {}", value);
+                    suffix_domains.push(value);
                 }
                 config::router::rule::domain::Type::FULL => {
-                    cond_or.add(Box::new(DomainFullMatcher::new(filter)));
+                    debug!("FULL 类型规则: {}", value);
+                    other_matchers.add(Box::new(DomainFullMatcher::new(value)));
                 }
             }
         }
+        
+        debug!("收集到 {} 个 DOMAIN-SUFFIX 规则", suffix_domains.len());
+        debug!("收集到 {} 个其他类型规则", other_matchers.conditions.len());
+        
+        if !other_matchers.conditions.is_empty() {
+            domain_cond.add(Box::new(other_matchers));
+        }
+        
+        if !suffix_domains.is_empty() {
+            debug!("创建 DomainSuffixMatcher, 包含规则: {:?}", suffix_domains);
+            domain_cond.add(Box::new(DomainSuffixMatcher::new(
+                suffix_domains,
+                target_tag.clone()
+            )));
+        }
+        
+        debug!("DomainMatcher 创建完成, 目标: {}", target_tag);
         DomainMatcher {
-            condition: Box::new(cond_or),
+            condition: Box::new(domain_cond),
         }
     }
 }
@@ -423,9 +445,10 @@ impl Router {
         let mut mmdb_readers: HashMap<String, Arc<maxminddb::Reader<Mmap>>> = HashMap::new();
         for rr in routing_rules.iter_mut() {
             let mut cond_and = ConditionAnd::new();
+            let target_tag = std::mem::take(&mut rr.target_tag);
 
             if !rr.domains.is_empty() {
-                cond_and.add(Box::new(DomainMatcher::new(&mut rr.domains)));
+                cond_and.add(Box::new(DomainMatcher::new(&mut rr.domains, target_tag.clone())));
             }
 
             if !rr.ip_cidrs.is_empty() {
@@ -467,13 +490,9 @@ impl Router {
                 cond_and.add(Box::new(InboundTagMatcher::new(&mut rr.inbound_tags)));
             }
 
-            if cond_and.is_empty() {
-                warn!("empty rule at target {}", rr.target_tag);
-                continue;
+            if !cond_and.is_empty() {
+                rules.push(Rule::new(target_tag, Box::new(cond_and)));
             }
-
-            let tag = std::mem::take(&mut rr.target_tag);
-            rules.push(Rule::new(tag, Box::new(cond_and)));
         }
     }
 

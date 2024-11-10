@@ -177,6 +177,7 @@ impl Default for ProxyGroup {
 pub struct Rule {
     pub type_field: String,
     pub filter: Option<String>,
+    pub filters: Option<Vec<String>>,
     pub target: String,
 }
 
@@ -594,11 +595,7 @@ pub fn from_lines(lines: Vec<io::Result<String>>) -> Result<Config> {
                         group.cache_timeout = i;
                     }
                     "last-resort" => {
-                        let i = if let Ok(i) = v.parse::<String>() {
-                            Some(i)
-                        } else {
-                            None
-                        };
+                        let i = Some(v.to_string());
                         group.last_resort = i;
                     }
                     "health-check-timeout" => {
@@ -643,11 +640,7 @@ pub fn from_lines(lines: Vec<io::Result<String>>) -> Result<Config> {
                         group.delay_base = i;
                     }
                     "method" => {
-                        let i = if let Ok(i) = v.parse::<String>() {
-                            Some(i)
-                        } else {
-                            None
-                        };
+                        let i = Some(v.to_string());
                         group.method = i;
                     }
                     _ => {}
@@ -1404,11 +1397,24 @@ pub fn to_internal(conf: &mut Config) -> Result<internal::Config> {
                     rule.domains.push(domain);
                 }
                 "DOMAIN-SUFFIX" => {
-                    let mut domain = internal::router::rule::Domain::new();
-                    domain.type_ =
-                        protobuf::EnumOrUnknown::new(internal::router::rule::domain::Type::DOMAIN);
-                    domain.value = ext_filter;
-                    rule.domains.push(domain);
+                    if let Some(filters) = ext_rule.filters.take() {
+                        for filter in filters {
+                            let mut domain = internal::router::rule::Domain::new();
+                            domain.type_ = protobuf::EnumOrUnknown::new(
+                                internal::router::rule::domain::Type::DOMAIN
+                            );
+                            domain.value = filter;
+                            rule.domains.push(domain);
+                        }
+                    } else if let Some(filter) = ext_rule.filter.take() {
+                        // 兼容旧格式
+                        let mut domain = internal::router::rule::Domain::new();
+                        domain.type_ = protobuf::EnumOrUnknown::new(
+                            internal::router::rule::domain::Type::DOMAIN
+                        );
+                        domain.value = filter;
+                        rule.domains.push(domain);
+                    }
                 }
                 "GEOIP" => {
                     let mut mmdb = internal::router::rule::Mmdb::new();

@@ -6,6 +6,7 @@ use anyhow::Result;
 use protobuf::Message;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::value::RawValue;
+use tracing::debug;
 
 use crate::config::{external_rule, internal};
 
@@ -988,14 +989,17 @@ pub fn to_internal(json: &mut Config) -> Result<internal::Config> {
                     }
                 }
                 if let Some(ext_domain_suffixes) = ext_rule.domain_suffix.as_mut() {
+                    debug!("开始解析 DOMAIN-SUFFIX 规则组, 包含 {} 条规则", ext_domain_suffixes.len());
                     for ext_domain_suffix in ext_domain_suffixes.drain(0..) {
                         let mut domain = internal::router::rule::Domain::new();
                         domain.type_ = protobuf::EnumOrUnknown::new(
                             internal::router::rule::domain::Type::DOMAIN,
                         );
-                        domain.value = ext_domain_suffix;
+                        domain.value = ext_domain_suffix.clone();
                         rule.domains.push(domain);
+                        debug!("解析 DOMAIN-SUFFIX 规则: {}", ext_domain_suffix);
                     }
+                    debug!("DOMAIN-SUFFIX 规则组解析完成");
                 }
                 if let Some(ext_geoips) = ext_rule.geoip.as_mut() {
                     for ext_geoip in ext_geoips.drain(0..) {

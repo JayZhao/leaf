@@ -7,7 +7,6 @@ use protobuf::Message;
 use crate::app::dispatcher::Dispatcher;
 use crate::app::nat_manager::NatManager;
 use crate::config;
-use crate::proxy;
 use crate::proxy::AnyInboundHandler;
 use crate::Runner;
 
@@ -47,6 +46,8 @@ use super::cat_listener::CatInboundListener;
 ))]
 use super::tun_listener::TunInboundListener;
 
+use crate::proxy::inbound::Handler;
+
 pub struct InboundManager {
     network_listeners: HashMap<String, NetworkInboundListener>,
     #[cfg(all(
@@ -79,7 +80,7 @@ impl InboundManager {
                 "socks" => {
                     let stream = Arc::new(socks::inbound::StreamHandler);
                     let datagram = Arc::new(socks::inbound::DatagramHandler);
-                    let handler = Arc::new(proxy::inbound::Handler::new(
+                    let handler = Arc::new(Handler::new(
                         tag.clone(),
                         Some(stream),
                         Some(datagram),
@@ -89,7 +90,7 @@ impl InboundManager {
                 #[cfg(feature = "inbound-http")]
                 "http" => {
                     let stream = Arc::new(http::inbound::StreamHandler);
-                    let handler = Arc::new(proxy::inbound::Handler::new(
+                    let handler = Arc::new(Handler::new(
                         tag.clone(),
                         Some(stream),
                         None,
@@ -109,7 +110,7 @@ impl InboundManager {
                         cipher: settings.method.clone(),
                         password: settings.password.clone(),
                     });
-                    let handler = Arc::new(proxy::inbound::Handler::new(
+                    let handler = Arc::new(Handler::new(
                         tag.clone(),
                         Some(stream),
                         Some(datagram),
@@ -123,7 +124,7 @@ impl InboundManager {
                     let stream = Arc::new(trojan::inbound::StreamHandler::new(
                         settings.passwords.to_vec(),
                     ));
-                    let handler = Arc::new(proxy::inbound::Handler::new(
+                    let handler = Arc::new(Handler::new(
                         tag.clone(),
                         Some(stream),
                         None,
@@ -135,7 +136,7 @@ impl InboundManager {
                     let settings =
                         config::WebSocketInboundSettings::parse_from_bytes(&inbound.settings)?;
                     let stream = Arc::new(ws::inbound::StreamHandler::new(settings.path.clone()));
-                    let handler = Arc::new(proxy::inbound::Handler::new(
+                    let handler = Arc::new(Handler::new(
                         tag.clone(),
                         Some(stream),
                         None,
@@ -151,7 +152,7 @@ impl InboundManager {
                         settings.certificate_key.clone(),
                         settings.alpn.clone(),
                     )?);
-                    let handler = Arc::new(proxy::inbound::Handler::new(
+                    let handler = Arc::new(Handler::new(
                         tag.clone(),
                         None,
                         Some(datagram),
@@ -165,7 +166,7 @@ impl InboundManager {
                         settings.certificate.clone(),
                         settings.certificate_key.clone(),
                     )?);
-                    let handler = Arc::new(proxy::inbound::Handler::new(
+                    let handler = Arc::new(Handler::new(
                         tag.clone(),
                         Some(stream),
                         None,
@@ -197,7 +198,7 @@ impl InboundManager {
                         let stream = Arc::new(amux::inbound::StreamHandler {
                             actors: actors.clone(),
                         });
-                        let handler = Arc::new(proxy::inbound::Handler::new(
+                        let handler = Arc::new(Handler::new(
                             tag.clone(),
                             Some(stream),
                             None,
@@ -235,7 +236,7 @@ impl InboundManager {
                             None
                         };
                         let handler =
-                            Arc::new(proxy::inbound::Handler::new(tag.clone(), stream, datagram));
+                            Arc::new(Handler::new(tag.clone(), stream, datagram));
                         handlers.insert(tag.clone(), handler);
                     }
                     _ => (),
