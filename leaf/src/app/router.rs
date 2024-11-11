@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::RwLock;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -416,6 +417,7 @@ pub struct Router {
     rules: Vec<Rule>,
     domain_resolve: bool,
     dns_client: SyncDnsClient,
+    route_cache: RwLock<HashMap<String, String>>,
 }
 
 impl Router {
@@ -487,10 +489,12 @@ impl Router {
             Self::load_rules(&mut rules, &mut router.rules);
             domain_resolve = router.domain_resolve;
         }
+        
         Router {
             rules,
             domain_resolve,
             dns_client,
+            route_cache: RwLock::new(HashMap::new()),
         }
     }
 
@@ -503,13 +507,35 @@ impl Router {
         Ok(())
     }
 
-    pub async fn pick_route<'a>(&'a self, sess: &'a Session) -> Result<&'a String> {
+    pub async fn pick_route<'a>(&'a self, sess: &'a Session) -> Result<String> {
+        let cache_key = if sess.destination.is_domain() {
+            sess.destination.domain()
+                .ok_or_else(|| anyhow!("illegal domain name"))?
+                .to_string()
+        } else if let Some(ip) = sess.destination.ip() {
+            ip.to_string()
+        } else {
+            return Err(anyhow!("invalid destination address"));
+        };
+        
+        if let Some(target) = self.route_cache.read().unwrap().get(&cache_key) {
+            debug!("route cache hit for {}", &cache_key);
+            return Ok(target.clone());
+        }
+
         debug!("picking route for {}:{}", &sess.network, &sess.destination);
+        
         for rule in &self.rules {
             if rule.apply(sess) {
-                return Ok(&rule.target);
+                let target = rule.target.clone();
+                self.route_cache.write().unwrap().insert(
+                    cache_key,
+                    target.clone()
+                );
+                return Ok(target);
             }
         }
+
         if sess.destination.is_domain() && self.domain_resolve {
             let ips = {
                 self.dns_client
@@ -533,11 +559,17 @@ impl Router {
                 );
                 for rule in &self.rules {
                     if rule.apply(&new_sess) {
-                        return Ok(&rule.target);
+                        let target = rule.target.clone();
+                        self.route_cache.write().unwrap().insert(
+                            cache_key,
+                            target.clone()
+                        );
+                        return Ok(target);
                     }
                 }
             }
         }
+        
         Err(anyhow!("no matching rules"))
     }
 }
