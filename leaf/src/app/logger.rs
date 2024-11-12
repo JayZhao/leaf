@@ -59,25 +59,31 @@ fn get_writer(config: &config::Log) -> Result<(WriterLayer, WorkerGuard)> {
                 if *crate::option::LOG_CONSOLE_OUT {
                     let writer = crate::mobile::logger::ConsoleWriter::default();
                     let (writer, writer_guard) = tracing_appender::non_blocking(writer);
-                    let writer = fmt::Layer::default().with_ansi(false).with_writer(writer);
+                    let writer = fmt::Layer::default()
+                        .with_ansi(false)
+                        .with_writer(writer);
                     (writer, writer_guard)
                 } else {
                     let (writer, writer_guard) = tracing_appender::non_blocking(std::io::stdout());
-                    let writer = fmt::Layer::default().with_writer(writer);
+                    let writer = fmt::Layer::default()
+                        .with_writer(writer);
                     (writer, writer_guard)
                 }
             }
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             {
                 let (writer, writer_guard) = tracing_appender::non_blocking(std::io::stdout());
-                let writer = fmt::Layer::default().with_writer(writer);
+                let writer = fmt::Layer::default()
+                    .with_writer(writer);
                 (writer, writer_guard)
             }
             #[cfg(any(target_os = "ios", target_os = "android"))]
             {
                 let writer = crate::mobile::logger::ConsoleWriter::default();
                 let (writer, writer_guard) = tracing_appender::non_blocking(writer);
-                let writer = fmt::Layer::default().with_ansi(false).with_writer(writer);
+                let writer = fmt::Layer::default()
+                    .with_ansi(false)
+                    .with_writer(writer);
                 (writer, writer_guard)
             }
         }
@@ -85,7 +91,9 @@ fn get_writer(config: &config::Log) -> Result<(WriterLayer, WorkerGuard)> {
             let p = Path::new(&config.output_file);
             let writer = OpenOptions::new().append(true).create(true).open(p)?;
             let (writer, writer_guard) = tracing_appender::non_blocking(writer);
-            let writer = fmt::Layer::default().with_ansi(false).with_writer(writer);
+            let writer = fmt::Layer::default()
+                .with_ansi(false)
+                .with_writer(writer);
             (writer, writer_guard)
         }
     })

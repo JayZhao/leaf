@@ -513,15 +513,23 @@ impl Router {
         let cache_key = if sess.destination.is_domain() {
             sess.destination.domain()
                 .ok_or_else(|| anyhow!("illegal domain name"))?
-                .to_string()
+                .split('.')
+                .rev()
+                .take(2)
+                .collect::<Vec<&str>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<&str>>()
+                .join(".")
         } else if let Some(ip) = sess.destination.ip() {
             ip.to_string()
         } else {
-            return Err(anyhow!("invalid destination address"));
+            // Return "Direct" tag for invalid destination addresses
+            return Ok("Direct".to_string());
         };
         
         if let Some(target) = self.route_cache.read().unwrap().get(&cache_key) {
-            debug!("route cache hit for {}", &cache_key);
+            debug!("route cache hit for {} -> {}", &cache_key, target);
             return Ok(target.clone());
         }
 
@@ -571,8 +579,14 @@ impl Router {
                 }
             }
         }
-        
-        Err(anyhow!("no matching rules"))
+
+        // When no rules match, default to "trojan_out" tag
+        let default_target = "trojan_out".to_string();
+        self.route_cache.write().unwrap().insert(
+            cache_key,
+            default_target.clone()
+        );
+        Ok(default_target)
     }
 }
 

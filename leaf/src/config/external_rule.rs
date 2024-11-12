@@ -60,6 +60,10 @@ pub fn add_external_rule(rule: &mut internal::router::Rule, ext_external: &str) 
         // Loads SiteGroup objects one by one instead of loading the whole list.
         let mut reader = BufReader::with_capacity(2048, File::open(&file)?);
         let mut input = protobuf::CodedInputStream::new(&mut reader);
+        let mut plain_count = 0;
+        let mut domain_count = 0;
+        let mut full_count = 0;
+
         while !input.eof()? {
             let _ = input.read_raw_byte()?; // skip
             let mut site_group = input.read_message::<geosite::SiteGroup>()?;
@@ -67,6 +71,7 @@ pub fn add_external_rule(rule: &mut internal::router::Rule, ext_external: &str) 
                 for domain in site_group.domain.iter_mut() {
                     let mut domain_rule = match domain.type_.unwrap() {
                         geosite::domain::Type::Plain => {
+                            plain_count += 1;
                             let mut d = internal::router::rule::Domain::new();
                             d.type_ = protobuf::EnumOrUnknown::new(
                                 internal::router::rule::domain::Type::PLAIN,
@@ -74,6 +79,7 @@ pub fn add_external_rule(rule: &mut internal::router::Rule, ext_external: &str) 
                             d
                         }
                         geosite::domain::Type::Domain => {
+                            domain_count += 1;
                             let mut d = internal::router::rule::Domain::new();
                             d.type_ = protobuf::EnumOrUnknown::new(
                                 internal::router::rule::domain::Type::DOMAIN,
@@ -81,6 +87,7 @@ pub fn add_external_rule(rule: &mut internal::router::Rule, ext_external: &str) 
                             d
                         }
                         geosite::domain::Type::Full => {
+                            full_count += 1;
                             let mut d = internal::router::rule::Domain::new();
                             d.type_ = protobuf::EnumOrUnknown::new(
                                 internal::router::rule::domain::Type::FULL,
@@ -96,12 +103,14 @@ pub fn add_external_rule(rule: &mut internal::router::Rule, ext_external: &str) 
                     rule.domains.push(domain_rule);
                 }
                 println!(
-                    "loaded {} domain rules from [{}] for tag [{}]",
-                    rule.domains.len(),
+                    "[{}] matcher statistics for tag [{}]:\n  keyword(Plain): {}\n  suffix(Domain): {}\n  full: {}",
                     file,
-                    code
+                    code,
+                    plain_count,
+                    domain_count,
+                    full_count
                 );
-                break; // assume at most 1 matched tag
+                break;
             }
         }
     }
