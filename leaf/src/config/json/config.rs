@@ -1011,7 +1011,12 @@ pub fn to_internal(json: &mut Config) -> Result<internal::Config> {
                         match external_rule::add_external_rule(&mut rule, &ext_external) {
                             Ok(_) => (),
                             Err(e) => {
-                                println!("load external rule failed: {}", e);
+                                println!(
+                                    "Failed to load external rule '{}': {} (asset location: {})",
+                                    ext_external,
+                                    e,
+                                    &*crate::option::ASSET_LOCATION
+                                );
                             }
                         }
                     }

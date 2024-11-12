@@ -8,7 +8,7 @@ use cidr::IpCidr;
 use futures::TryFutureExt;
 use maxminddb::geoip2::Country;
 use maxminddb::Mmap;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::app::SyncDnsClient;
 use crate::config;
@@ -42,6 +42,7 @@ struct MmdbMatcher {
 
 impl MmdbMatcher {
     fn new(reader: Arc<maxminddb::Reader<Mmap>>, country_code: String) -> Self {
+        debug!("Creating MMDB matcher for country code: {}", country_code);
         MmdbMatcher {
             reader,
             country_code,
@@ -440,12 +441,13 @@ impl Router {
                         Some(r) => r.clone(),
                         None => match maxminddb::Reader::open_mmap(&mmdb.file) {
                             Ok(r) => {
+                                info!("Successfully loaded mmdb file: {}", mmdb.file);
                                 let r = Arc::new(r);
                                 mmdb_readers.insert(mmdb.file.to_owned(), r.clone());
                                 r
                             }
                             Err(e) => {
-                                warn!("open mmdb file {} failed: {:?}", mmdb.file, e);
+                                warn!("Failed to open mmdb file {}: {:?}", mmdb.file, e);
                                 continue;
                             }
                         },
