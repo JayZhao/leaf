@@ -1,4 +1,4 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap};
 use std::sync::Arc;
 use std::sync::RwLock;
 
@@ -234,163 +234,6 @@ impl Condition for PortRangeMatcher {
     }
 }
 
-struct FullMatcher {
-    domains: HashSet<String>
-}
-
-struct SuffixTrie {
-    children: HashMap<char, Box<SuffixTrie>>,
-    is_end: bool,
-    suffix: String,
-}
-
-impl SuffixTrie {
-    fn new() -> Self {
-        Self {
-            children: HashMap::new(),
-            is_end: false,
-            suffix: String::new(),
-        }
-    }
-
-    fn insert(&mut self, domain: &str) {
-        let parts: Vec<&str> = domain.split('.').collect();
-        let mut current_suffix = String::new();
-        
-        let mut node = self;
-        for part in parts.iter().rev() {
-            if current_suffix.is_empty() {
-                current_suffix = part.to_string();
-            } else {
-                current_suffix = format!("{}.{}", part, current_suffix);
-            }
-            
-            for c in part.chars() {
-                node = node.children
-                    .entry(c)
-                    .or_insert_with(|| Box::new(SuffixTrie::new()));
-            }
-            
-            node = node.children
-                .entry('.')
-                .or_insert_with(|| Box::new(SuffixTrie::new()));
-        }
-        
-        node.is_end = true;
-        node.suffix = current_suffix;
-    }
-
-    fn matches(&self, domain: &str) -> Option<String> {
-        let parts: Vec<&str> = domain.split('.').collect();
-        let mut node = self;
-        let mut matched_suffix = None;
-        
-        for part in parts.iter().rev() {
-            for c in part.chars() {
-                match node.children.get(&c) {
-                    Some(next) => node = next,
-                    None => return matched_suffix,
-                }
-            }
-            
-            match node.children.get(&'.') {
-                Some(next) => {
-                    node = next;
-                    if node.is_end {
-                        matched_suffix = Some(node.suffix.clone());
-                    }
-                }
-                None => return matched_suffix,
-            }
-        }
-        
-        matched_suffix
-    }
-
-    fn print_tree(&self, prefix: &str, is_last: bool) {
-        let marker = if is_last { "└── " } else { "├── " };
-        println!("{}{}{}", prefix, marker, if self.is_end { 
-            format!("✓ ({})", self.suffix) 
-        } else { 
-            "○".to_string() 
-        });
-
-        let children: Vec<_> = self.children.iter().collect();
-        let child_count = children.len();
-
-        for (i, (c, child)) in children.iter().enumerate() {
-            let new_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
-            print!("{}{}{} ", new_prefix, if i == child_count - 1 { "└── " } else { "├── " }, c);
-            child.print_tree(&format!("{}{}", new_prefix, "    "), i == child_count - 1);
-        }
-    }
-}
-
-struct SuffixMatcher {
-    trie: SuffixTrie
-}
-
-struct KeywordMatcher {
-    keywords: HashSet<String>
-}
-
-struct DomainMatcher {
-    full: FullMatcher,
-    suffix: SuffixMatcher,
-    keyword: KeywordMatcher,
-}
-
-impl DomainMatcher {
-    fn new(domains: &mut [config::router::rule::Domain]) -> Self {
-        let mut full = FullMatcher { domains: HashSet::new() };
-        let mut suffix = SuffixMatcher { trie: SuffixTrie::new() };
-        let mut keyword = KeywordMatcher { keywords: HashSet::new() };
-
-        for domain in domains.iter_mut() {
-            let value = std::mem::take(&mut domain.value);
-            match domain.type_.unwrap() {
-                config::router::rule::domain::Type::FULL => {
-                    full.domains.insert(value);
-                }
-                config::router::rule::domain::Type::DOMAIN => {
-                    suffix.trie.insert(&value);
-                }
-                config::router::rule::domain::Type::PLAIN => {
-                    keyword.keywords.insert(value);
-                }
-            }
-        }
-
-        DomainMatcher { full, suffix, keyword }
-    }
-}
-
-impl Condition for DomainMatcher {
-    fn apply(&self, sess: &Session) -> bool {
-        if let Some(domain) = sess.destination.domain() {
-            let start = std::time::Instant::now();
-            
-            if self.full.domains.contains(domain) {
-                debug!("[{}] matches full domain in {:?}", domain, start.elapsed());
-                return true;
-            }
-
-            if let Some(matched_suffix) = self.suffix.trie.matches(domain) {
-                debug!("[{}] matches domain suffix in {:?}", domain, start.elapsed());
-                return true;
-            }
-
-            if self.keyword.keywords.iter().any(|k| domain.contains(k)) {
-                debug!("[{}] matches domain keyword in {:?}", domain, start.elapsed());
-                return true;
-            }
-
-            debug!("domain [{}] match completed in {:?}", domain, start.elapsed());
-        }
-        false
-    }
-}
-
 struct ConditionAnd {
     conditions: Vec<Box<dyn Condition>>,
 }
@@ -461,10 +304,6 @@ impl Router {
         let mut mmdb_readers: HashMap<String, Arc<maxminddb::Reader<Mmap>>> = HashMap::new();
         for rr in routing_rules.iter_mut() {
             let mut cond_and = ConditionAnd::new();
-
-            if !rr.domains.is_empty() {
-                cond_and.add(Box::new(DomainMatcher::new(&mut rr.domains)));
-            }
 
             if !rr.ip_cidrs.is_empty() {
                 cond_and.add(Box::new(IpCidrMatcher::new(&mut rr.ip_cidrs)));
@@ -599,13 +438,6 @@ impl Router {
                     sess.destination
                 );
 
-                if let Some(domain) = sess.destination.domain() {
-                    if domain.contains("google.com") {
-                        debug!("🔍 Debug breakpoint hit for google.com domain: {}", domain);
-                        let matched = rule.apply(sess);
-                    }
-                }
-
                 let target = rule.target.clone();
                 self.route_cache.write().unwrap().insert(
                     cache_key,
@@ -668,17 +500,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_is_sub_domain() {
-        let d1 = "video.google.com".to_string();
-        let d2 = "google.com".to_string();
-        assert!(is_sub_domain(&d1, &d2));
-
-        let d1 = "video.google.com".to_string();
-        let d2 = "gle.com".to_string();
-        assert!(!is_sub_domain(&d1, &d2));
-    }
-
-    #[test]
     fn test_port_matcher() {
         let mut sess = Session {
             destination: SocksAddr::Domain("www.google.com".to_string(), 22),
@@ -712,70 +533,6 @@ mod tests {
         assert!(m.is_err());
         let m = PortRangeMatcher::new("22-23-24");
         assert!(m.is_err());
-    }
-
-    #[test]
-    fn test_suffix_trie() {
-        let mut trie = SuffixTrie::new();
-        
-        // 插入一些测试域名
-        trie.insert("baidu.com");
-        trie.insert("sina.com.cn");
-        trie.insert("qq.com");
-        
-        // 打印树结构
-        println!("Suffix Tree Structure:");
-        trie.print_tree("", true);
-        
-        // 测试匹配
-        let test_cases = vec![
-            ("www.baidu.com", true),
-            ("map.baidu.com", true),
-            ("google.com", false),
-            ("news.sina.com.cn", true),
-            ("baidu.com.cn", false),
-            ("fake.qq.com", true),
-            ("myqq.com", false),
-        ];
-
-        for (domain, expected) in test_cases {
-            let result = trie.matches(domain);
-            println!("Testing {}: {:?}", domain, result);
-            assert_eq!(result.is_some(), expected, 
-                "Domain '{}' matching failed. Expected {}, got {:?}", 
-                domain, expected, result);
-        }
-    }
-
-    #[test]
-    fn test_complex_domains() {
-        let mut trie = SuffixTrie::new();
-        
-        // 测试更复杂的场景
-        trie.insert("com.cn");
-        trie.insert("edu.cn");
-        trie.insert("gov.cn");
-        trie.insert("org.cn");
-        
-        println!("\nComplex Suffix Tree Structure:");
-        trie.print_tree("", true);
-        
-        let test_cases = vec![
-            ("example.com.cn", true),
-            ("school.edu.cn", true),
-            ("beijing.gov.cn", true),
-            ("ngo.org.cn", true),
-            ("example.cn", false),
-            ("example.com", false),
-        ];
-
-        for (domain, expected) in test_cases {
-            let result = trie.matches(domain);
-            println!("Testing {}: {:?}", domain, result);
-            assert_eq!(result.is_some(), expected,
-                "Domain '{}' matching failed. Expected {}, got {:?}",
-                domain, expected, result);
-        }
     }
 }
 

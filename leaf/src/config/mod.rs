@@ -13,6 +13,8 @@ pub mod json;
 #[cfg(feature = "config-conf")]
 pub mod conf;
 
+pub mod domain_rule;
+
 pub use internal::*;
 
 pub fn from_string(s: &str) -> Result<internal::Config> {

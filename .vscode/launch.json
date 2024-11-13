@@ -23,7 +23,32 @@
                 "--config",
                 "config.conf"
             ],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_BACKTRACE": "1"
+            }
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug domain_rule tests",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=leaf"
+                ],
+                "filter": {
+                    "name": "leaf",
+                    "kind": "lib"
+                }
+            },
+            "args": ["config::domain_rule", "--nocapture", "--test-threads=1"],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_BACKTRACE": "1"
+            }
         }
     ]
 }
