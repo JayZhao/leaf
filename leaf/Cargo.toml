@@ -159,6 +159,7 @@ anyhow = "1.0"
 rand = "0.8"
 socket2 = "0.5"
 async-recursion = "1.1"
+publicsuffix = "2.2"
 
 # DNS
 trust-dns-proto = { version = "0.23", default-features = false }

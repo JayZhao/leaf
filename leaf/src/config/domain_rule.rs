@@ -1,18 +1,96 @@
 use std::fs::File;
 use std::io::Read;
-use std::collections::HashSet;
-use protobuf::Message;
-use super::geosite::{SiteGroupList, domain::Type};
-use protobuf::EnumOrUnknown;
-use regex::Regex;
+use lazy_static::lazy_static;
+use std::sync::Arc;
+use tracing::{info, error};
 
 pub struct DomainRule {
     binary_domains: Vec<u128>,
-    full_domains: HashSet<String>,
-    regex_patterns: Vec<Regex>,
 }
 
 impl DomainRule {
+    /// 获取域名的可注册部分
+    /// 
+    /// 规则:
+    /// 1. 处理特殊的中国相关顶级域名，如 .com.cn, .net.cn 等
+    /// 2. 处理常见的二级域名，如 .com, .net 等
+    /// 3. 如果不在已知列表中，保持原样返回
+    /// 
+    /// 示例:
+    /// - www.example.com.cn -> example.com.cn
+    /// - sub.example.com -> example.com
+    /// - example.cn -> example.cn
+    /// - www.example.co.uk -> example.co.uk (国外特殊域名也一并处理)
+    fn get_registrable_domain(domain: &str) -> String {
+        // 如果域名以 www. 开头，去掉它
+        let domain = if domain.starts_with("www.") {
+            &domain[4..]
+        } else {
+            domain
+        };
+
+        let parts: Vec<&str> = domain.split('.').collect();
+        if parts.len() < 2 {
+            return domain.to_string();
+        }
+
+        // 特殊的三级域名后缀
+        const SPECIAL_SUFFIXES: [&str; 14] = [
+            "com.cn", "net.cn", "org.cn", "gov.cn", 
+            "edu.cn", "mil.cn", "ac.cn", "ah.cn",
+            "bj.cn", "sh.cn", "tj.cn", "hz.cn",
+            "co.uk", "co.jp"  // 附加一些常见的国外特殊后缀
+        ];
+
+        // 常见的二级域名后缀
+        const COMMON_SUFFIXES: [&str; 12] = [
+            "cn", "com", "net", "org", "edu",
+            "gov", "mil", "biz", "info", "pro",
+            "name", "xyz"
+        ];
+        
+        // 1. 检查是否是特殊的三级域名
+        if parts.len() >= 3 {
+            let possible_special = parts[parts.len()-2..].join(".");
+            if SPECIAL_SUFFIXES.contains(&possible_special.as_str()) {
+                return if parts.len() == 3 {
+                    domain.to_string()
+                } else {
+                    format!("{}.{}", parts[parts.len()-3], possible_special)
+                };
+            }
+        }
+
+        // 2. 检查是否是普通的二级域名
+        if COMMON_SUFFIXES.contains(&parts.last().unwrap()) {
+            return if parts.len() == 2 {
+                domain.to_string()
+            } else {
+                format!("{}.{}", parts[parts.len()-2], parts.last().unwrap())
+            };
+        }
+
+        // 3. 如果不在已知列表中，返回原始域名
+        domain.to_string()
+    }
+
+    /// 将域名转换为用于二分查找的 u128 值
+    fn domain_to_u128(domain: &str) -> u128 {
+        // 首先获取可注册域名部分
+        let domain = Self::get_registrable_domain(domain);
+        
+        if domain.is_empty() {
+            return 0;
+        }
+
+        let mut bytes = [0u8; 16];
+        let domain_bytes = domain.as_bytes();
+        let len = domain_bytes.len().min(16);
+        bytes[..len].copy_from_slice(&domain_bytes[domain_bytes.len().saturating_sub(16)..]);
+
+        u128::from_le_bytes(bytes)
+    }
+
     pub fn new() -> std::io::Result<Self> {
         let exe_path = std::env::current_exe()?;
         let exe_dir = if cfg!(test) {
@@ -37,12 +115,12 @@ impl DomainRule {
         };
 
         let binary_path = exe_dir.join("site_cn_binary.dat");
-        let other_path = exe_dir.join("site_cn_other.dat");
 
-        println!("📂 Attempting to load binary file: {}", binary_path.display());
+        info!("📂 Attempting to load binary file: {}", binary_path.display());
         
         // 检查文件是否存在
         if !binary_path.exists() {
+            error!("❌ Binary file not found: {}", binary_path.display());
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 format!("Binary file not found: {}", binary_path.display())
@@ -53,11 +131,18 @@ impl DomainRule {
         let mut binary_file = File::open(binary_path)?;
         let mut binary_data = Vec::new();
         binary_file.read_to_end(&mut binary_data)?;
-        
-        println!("📊 Binary data size: {} bytes", binary_data.len());
+
+        if binary_data.is_empty() {
+            error!("❌ Binary data is empty");
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Binary data is empty"
+            ));
+        }
         
         // 确保数据长度是16的倍数
         if binary_data.len() % 16 != 0 {
+            error!("❌ Binary data length ({}) is not a multiple of 16", binary_data.len());
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("Binary data length ({}) is not a multiple of 16", binary_data.len())
@@ -77,134 +162,102 @@ impl DomainRule {
         // 验证数组是否有序
         let is_sorted = binary_domains.windows(2).all(|w| w[0] <= w[1]);
         if !is_sorted {
-            eprintln!("⚠️ Warning: binary domains are not sorted!");
-            println!("🔄 Sorting binary domains...");
+            error!("⚠️ binary domains are not sorted!");
+            info!("🔄 Sorting binary domains...");
             binary_domains.sort_unstable();
         }
             
-        eprintln!("\n🔍 First 10 domain entries (decimal and hex):");
+        info!("\n🔍 First 10 domain entries (decimal and hex):");
         for (i, value) in binary_domains.iter().take(10).enumerate() {
-            eprintln!("  [{:2}] {} (hex: 0x{:x})", i, value, value);
+            info!("  [{:2}] {} (hex: 0x{:x})", i, value, value);
             // 尝试将值转换回字符串看看是什么
             let bytes = value.to_le_bytes();
             if let Ok(s) = String::from_utf8(bytes.to_vec()) {
-                eprintln!("       ASCII: {}", s);
+                info!("       ASCII: {}", s);
             }
         }
         
-        println!("📂 Attempting to load other file: {}", other_path.display());
-        
-        // 检查其他文件是否存在
-        if !other_path.exists() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("Other file not found: {}", other_path.display())
-            ));
-        }
-        
-        // 加载其他域名数据
-        let mut other_file = File::open(other_path)?;
-        let mut other_data = Vec::new();
-        other_file.read_to_end(&mut other_data)?;
-        
-        println!("📊 Other data size: {} bytes", other_data.len());
-        
-        let other_domains = match SiteGroupList::parse_from_bytes(&other_data) {
-            Ok(domains) => domains,
-            Err(e) => return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Failed to parse other domains: {}", e)
-            )),
-        };
-        
-        // 从 other_domains 中分离完整域名和正则表达式
-        let mut full_domains = HashSet::new();
-        let mut regex_domains = Vec::new();
-
-        for site_group in &other_domains.site_group {
-            for domain in &site_group.domain {
-                if domain.type_ == EnumOrUnknown::new(Type::Full) {
-                    full_domains.insert(domain.value.clone());
-                } else if domain.type_ == EnumOrUnknown::new(Type::Regex) {
-                    regex_domains.push(domain.value.clone());
-                }
-            }
-        }
-
-        // 预编译正则表达式
-        let regex_patterns = regex_domains
-            .into_iter()
-            .filter_map(|pattern| {
-                match Regex::new(&pattern) {
-                    Ok(regex) => Some(regex),
-                    Err(e) => {
-                        eprintln!("Warning: Invalid regex pattern '{}': {}", pattern, e);
-                        None
-                    }
-                }
-            })
-            .collect();
-
         Ok(Self {
             binary_domains,
-            full_domains,
-            regex_patterns,
         })
     }
     
+    /// 检查是否是需要排除的国家顶级域名
+    fn is_excluded_country_tld(domain: &str) -> bool {
+        const EXCLUDED_COUNTRY_TLDS: [&str; 24] = [
+            // 亚洲地区
+            ".hk",   // 香港
+            ".tw",   // 台湾
+            ".sg",   // 新加坡
+            ".jp",   // 日本
+            ".kr",   // 韩国
+            ".in",   // 印度
+            ".th",   // 泰国
+            ".vn",   // 越南
+            ".my",   // 马来西亚
+            ".id",   // 印度尼西亚
+            ".io",   // 英属印度洋领地
+            
+            // 欧洲地区
+            ".uk",   // 英国
+            ".de",   // 德国
+            ".fr",   // 法国
+            ".it",   // 意大利
+            ".es",   // 西班牙
+            ".nl",   // 荷兰
+            ".ru",   // 俄罗斯
+            
+            // 美洲地区
+            ".us",   // 美国
+            ".ca",   // 加拿大
+            ".mx",   // 墨西哥
+            ".br",   // 巴西
+            
+            // 大洋洲
+            ".au",   // 澳大利亚
+            ".nz",   // 新西兰
+        ];
+
+        EXCLUDED_COUNTRY_TLDS.iter().any(|&tld| domain.ends_with(tld))
+    }
+    
     pub fn is_match(&self, domain: &str) -> bool {
-        // 1. 检查完整域名匹配
-        if self.full_domains.contains(domain) {
-            println!("✅ Domain '{}' matched in full domain list", domain);
+        // 首先检查是否是需要排除的国家顶级域名
+        if Self::is_excluded_country_tld(domain) {
+            info!("❌ Domain '{}' excluded due to country TLD", domain);
+            return false;
+        }
+
+        // 如果是以 .cn 结尾的域名，则直接返回 true
+        if domain.ends_with(".cn") {
+            info!("✅ Domain '{}' matched in .cn suffix", domain);
             return true;
         }
 
         // 2. 检查二进制域名列表
-        let domain_bytes = domain.as_bytes();
-        let mut dot_count = 0;
-        let mut scan_len = 0;
-        let mut start_pos = 0;
-
-        for (i, &byte) in domain_bytes.iter().rev().enumerate() {
-            scan_len = i + 1;
-            if byte == b'.' {
-                dot_count += 1;
-                if dot_count == 2 {
-                    start_pos = domain_bytes.len() - i;
-                    break;
-                }
-            }
-            if scan_len == 16 {
-                start_pos = domain_bytes.len() - i;
-                break;
-            }
-        }
-        
-        let domain_suffix = &domain_bytes[start_pos..];
-
-        let mut padded = [0u8; 16];
-        let start = (16 - domain_suffix.len()).max(0);
-        padded[start..].copy_from_slice(domain_suffix);
-        let domain_value = u128::from_le_bytes(padded);
+        let domain_value = Self::domain_to_u128(domain);
 
         // 使用二分查找
         if self.binary_domains.binary_search(&domain_value).is_ok() {
-            println!("✅ Domain '{}' matched in binary domain list (value: {})", domain, domain_value);
+            info!("✅ Domain '{}' matched in binary domain list (value: {})", domain, domain_value);
             return true;
         }
 
-        // 3. 使用正则表达式进行匹配
-        for (index, regex) in self.regex_patterns.iter().enumerate() {
-            if regex.is_match(domain) {
-                println!("✅ Domain '{}' matched by regex pattern #{}: '{}'", 
-                    domain, index + 1, regex.as_str());
-                return true;
-            }
-        }
-
-        println!("❌ Domain '{}' did not match any rules", domain);
+        info!("❌ Domain '{}' did not match any rules", domain);
         false
     }
+}
+
+lazy_static! {
+    pub static ref SMART_MATCHER: Arc<DomainRule> = {
+        match DomainRule::new() {
+            Ok(rule) => Arc::new(rule),
+            Err(e) => {
+                error!("❌ Failed to initialize SMART_MATCHER: {}", e);
+                panic!("Failed to initialize SMART_MATCHER: {}", e);
+            }
+        }
+    };
 }
 
 #[cfg(test)]
@@ -222,15 +275,14 @@ mod tests {
     #[test]
     fn test_domain_rule() {
         let binary_path = get_test_file_path("site_cn_binary.dat");
-        let other_path = get_test_file_path("site_cn_other.dat");
         
-        println!("\n🚀 Testing DomainRule with:");
-        println!("  Binary file: {}", binary_path.display());
-        println!("  Other file: {}", other_path.display());
+        info!("\n🚀 Testing DomainRule with:");
+        info!("  Binary file: {}", binary_path.display());
         
         let matcher = match DomainRule::new() {
             Ok(m) => m,
             Err(e) => {
+                error!("❌ Failed to create DomainRule: {}", e);
                 panic!("Failed to create DomainRule: {}", e);
             }
         };
@@ -304,13 +356,76 @@ mod tests {
             ("ls4h7w2v9t.com", false),
         ];
         
-        println!("\n🧪 Testing domain matching:");
+        info!("\n🧪 Testing domain matching:");
         for (domain, expected) in test_cases {
             let result = matcher.is_match(domain);
-            println!("  Testing '{}': {} (expected: {})", 
+            info!("  Testing '{}': {} (expected: {})", 
                 domain, result, expected);
             assert_eq!(result, expected, 
                 "Domain '{}' matching failed", domain);
+        }
+
+        // 添加国家顶级域名的测试用例
+        let country_tld_cases = vec![
+            ("example.hk", false),
+            ("example.tw", false),
+            ("example.sg", false),
+            ("example.jp", false),
+            ("example.uk", false),
+            ("example.us", false),
+            ("example.cn", true),      // 中国域名应该返回 true
+            ("example.com.cn", true),  // 中国域名应该返回 true
+        ];
+
+        for (domain, expected) in country_tld_cases {
+            let result = matcher.is_match(domain);
+            info!("  Testing country TLD '{}': {} (expected: {})", 
+                domain, result, expected);
+            assert_eq!(result, expected, 
+                "Country TLD domain '{}' matching failed", domain);
+        }
+    }
+
+    #[test]
+    fn test_get_registrable_domain() {
+        let test_cases = vec![
+            // 中国特殊域名测试
+            ("www.example.com.cn", "example.com.cn"),
+            ("sub.example.com.cn", "example.com.cn"),
+            ("www.example.net.cn", "example.net.cn"),
+            ("www.example.org.cn", "example.org.cn"),
+            ("www.example.gov.cn", "example.gov.cn"),
+            ("www.dept.edu.cn", "dept.edu.cn"),
+            
+            // 普通二级域名测试
+            ("www.example.com", "example.com"),
+            ("sub.example.com", "example.com"),
+            ("www.example.net", "example.net"),
+            ("www.example.org", "example.org"),
+            
+            // 国外特殊域名测试
+            ("www.example.co.uk", "example.co.uk"),
+            ("sub.example.co.uk", "example.co.uk"),
+            ("www.example.co.jp", "example.co.jp"),
+            
+            // 未知后缀测试
+            ("example.unknown", "example.unknown"),
+            ("sub.example.unknown", "sub.example.unknown"),
+            ("t2.xiaohongshu.com", "xiaohongshu.com"),
+            
+            // 边界情况测试
+            ("example", "example"),
+            ("com.cn", "com.cn"),
+            ("cn", "cn"),
+        ];
+
+        for (input, expected) in test_cases {
+            let result = DomainRule::get_registrable_domain(input);
+            assert_eq!(
+                result, expected,
+                "Domain '{}' should return '{}' but got '{}'",
+                input, expected, result
+            );
         }
     }
 }

@@ -13,6 +13,7 @@ use tracing::{debug, info, warn};
 use crate::app::SyncDnsClient;
 use crate::config;
 use crate::session::{Network, Session, SocksAddr};
+use crate::config::domain_rule::SMART_MATCHER;
 
 pub trait Condition: Send + Sync + Unpin {
     fn apply(&self, sess: &Session) -> bool;
@@ -292,6 +293,26 @@ impl Condition for ConditionOr {
     }
 }
 
+struct SmartMatcher;
+
+impl SmartMatcher {
+    fn new() -> Self {
+        SmartMatcher
+    }
+}
+
+impl Condition for SmartMatcher {
+    fn apply(&self, sess: &Session) -> bool {
+        if let Some(domain) = sess.destination.domain() {
+            if SMART_MATCHER.is_match(domain) {
+                debug!("[{}] matches smart rule", domain);
+                return true;
+            }
+        }
+        false
+    }
+}
+
 pub struct Router {
     rules: Vec<Rule>,
     domain_resolve: bool,
@@ -301,16 +322,32 @@ pub struct Router {
 
 impl Router {
     fn load_rules(rules: &mut Vec<Rule>, routing_rules: &mut [config::router::Rule]) {
+        
         let mut mmdb_readers: HashMap<String, Arc<maxminddb::Reader<Mmap>>> = HashMap::new();
-        for rr in routing_rules.iter_mut() {
-            let mut cond_and = ConditionAnd::new();
 
-            if !rr.ip_cidrs.is_empty() {
-                cond_and.add(Box::new(IpCidrMatcher::new(&mut rr.ip_cidrs)));
+        for rule in routing_rules.iter_mut() {
+            // 检查是否是 SMART 规则
+            if !rule.domains.is_empty() {
+                let domain = &rule.domains[0];
+                if domain.type_.enum_value() == Ok(config::router::rule::domain::Type::PLAIN)
+                    && domain.value == "_SMART_RULE_"
+                {
+                    rules.push(Rule::new(
+                        rule.target_tag.clone(),
+                        Box::new(SmartMatcher::new())
+                    ));
+                    continue;
+                }
             }
 
-            if !rr.mmdbs.is_empty() {
-                for mmdb in rr.mmdbs.iter() {
+            let mut cond_and = ConditionAnd::new();
+
+            if !rule.ip_cidrs.is_empty() {
+                cond_and.add(Box::new(IpCidrMatcher::new(&mut rule.ip_cidrs)));
+            }
+
+            if !rule.mmdbs.is_empty() {
+                for mmdb in rule.mmdbs.iter() {
                     let reader = match mmdb_readers.get(&mmdb.file) {
                         Some(r) => r.clone(),
                         None => match maxminddb::Reader::open_mmap(&mmdb.file) {
@@ -333,25 +370,22 @@ impl Router {
                 }
             }
 
-            if !rr.port_ranges.is_empty() {
-                cond_and.add(Box::new(PortMatcher::new(&rr.port_ranges)));
+            if !rule.port_ranges.is_empty() {
+                cond_and.add(Box::new(PortMatcher::new(&rule.port_ranges)));
             }
 
-            if !rr.networks.is_empty() {
-                cond_and.add(Box::new(NetworkMatcher::new(&mut rr.networks)));
+            if !rule.networks.is_empty() {
+                cond_and.add(Box::new(NetworkMatcher::new(&mut rule.networks)));
             }
 
-            if !rr.inbound_tags.is_empty() {
-                cond_and.add(Box::new(InboundTagMatcher::new(&mut rr.inbound_tags)));
+            if !rule.inbound_tags.is_empty() {
+                cond_and.add(Box::new(InboundTagMatcher::new(&mut rule.inbound_tags)));
             }
 
-            if cond_and.is_empty() {
-                warn!("empty rule at target {}", rr.target_tag);
-                continue;
+            if !cond_and.is_empty() {
+                let tag = std::mem::take(&mut rule.target_tag);
+                rules.push(Rule::new(tag, Box::new(cond_and)));
             }
-
-            let tag = std::mem::take(&mut rr.target_tag);
-            rules.push(Rule::new(tag, Box::new(cond_and)));
         }
     }
 
@@ -387,14 +421,7 @@ impl Router {
         let cache_key = if sess.destination.is_domain() {
             sess.destination.domain()
                 .ok_or_else(|| anyhow!("illegal domain name"))?
-                .split('.')
-                .rev()
-                .take(2)
-                .collect::<Vec<&str>>()
-                .into_iter()
-                .rev()
-                .collect::<Vec<&str>>()
-                .join(".")
+                .to_string()
         } else if let Some(ip) = sess.destination.ip() {
             ip.to_string()
         } else {
@@ -403,7 +430,7 @@ impl Router {
         };
         
         if let Some(target) = self.route_cache.read().unwrap().get(&cache_key) {
-            info!("🦜 route cache hit for {} -> {}", &cache_key, target);
+            info!("🦜 route cache hit for {} -> {}", &sess.destination, target);
             return Ok(target.clone());
         }
 

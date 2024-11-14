@@ -678,7 +678,14 @@ pub fn from_lines(lines: Vec<io::Result<String>>) -> Result<Config> {
             ..Default::default()
         };
 
-        // handle the FINAL rule first
+        // handle SMART rule first
+        if rule.type_field == "SMART" {
+            rule.target = params[1].to_string();
+            rules.push(rule);
+            continue;
+        }
+
+        // then handle the FINAL rule
         if rule.type_field == "FINAL" {
             rule.target = params[1].to_string();
             rules.push(rule);
@@ -686,7 +693,7 @@ pub fn from_lines(lines: Vec<io::Result<String>>) -> Result<Config> {
         }
 
         if params.len() < 3 {
-            continue; // at lease 3 params except the FINAL rule
+            continue; // at lease 3 params except the FINAL and SMART rules
         }
 
         // the 3th must be the target
@@ -1366,6 +1373,21 @@ pub fn to_internal(conf: &mut Config) -> Result<internal::Config> {
                     let final_ob = outbounds.remove(idx);
                     outbounds.insert(0, final_ob);
                 }
+                continue;
+            }
+
+            // handle SMART rule
+            if ext_rule.type_field == "SMART" {
+                
+                // 添加一个特殊的 Domain 来标记这是 SMART 规则
+                let mut domain = internal::router::rule::Domain::new();
+                domain.type_ = protobuf::EnumOrUnknown::new(
+                    internal::router::rule::domain::Type::PLAIN
+                );
+                domain.value = "_SMART_RULE_".to_string();  // 使用特殊值标记
+                rule.domains.push(domain);
+                
+                rules.push(rule);
                 continue;
             }
 
