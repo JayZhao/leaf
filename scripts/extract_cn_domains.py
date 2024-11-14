@@ -15,6 +15,10 @@ ADDITIONAL_DOMAINS = [
     'apple-cloudkit.com',
     'wofhwifhafalffagy.com',
     'appstoreconnect.apple.com',
+    'cdn-apple.com',
+    'netease.im',
+    'mzstatic.com',
+    'biliexample.com',
 ]
 
 EXCLUDED_DOMAINS = {
