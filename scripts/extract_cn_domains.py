@@ -214,6 +214,15 @@ def main():
         parent_dir / "target/release"
     ]
 
+    # 添加路径调试信息
+    print("\n🔍 路径信息:")
+    print(f"  • 脚本目录: {script_dir}")
+    print(f"  • 父目录: {parent_dir}")
+
+    vpn_tunnel_path = script_dir.parent.parent / "TrojanVPN/RelyVPNTunnel"
+    print(f"  • 目标 VPN Tunnel 路径: {vpn_tunnel_path}")
+    print(f"  • 目标路径是否存在: {vpn_tunnel_path.exists()}")
+
     try:
         print("\n🚀 开始域名提取处理...")
         print(f"📂 输入文件: {input_file}")
@@ -222,9 +231,13 @@ def main():
         binary_output = debug_dir / "site_cn_binary.dat"
         
         print(f"📂 输出文件将保存到: {debug_dir}")
+        print(f"  • debug_dir 是否存在: {debug_dir.exists()}")
+        print(f"  • binary_output 完整路径: {binary_output}")
+        print(f"  • binary_output 是否存在: {binary_output.exists()}")
         
         extract_and_split_domains(str(input_file), str(binary_output))
         
+        # 复制到 release 目录
         release_dir = target_dirs[1]
         if release_dir.exists():
             print(f"\n📦 正在复制文件到 {release_dir}")
@@ -236,6 +249,18 @@ def main():
             txt_output = binary_output.with_suffix('.txt')
             shutil.copy2(txt_output, release_dir / txt_output.name)
             print(f"  ✓ 已复制 {txt_output.name}")
+
+        # 复制到 VPN Tunnel 目录
+        if vpn_tunnel_path.exists():
+            print(f"\n📦 正在复制文件到 {vpn_tunnel_path}")
+            try:
+                shutil.copy2(binary_output, vpn_tunnel_path / binary_output.name)
+                print(f"  ✓ 已复制 {binary_output.name}")
+                print(f"  • 检查目标文件是否存在: {(vpn_tunnel_path / binary_output.name).exists()}")
+            except Exception as e:
+                print(f"  ❌ 复制失败: {e}")
+        else:
+            print(f"\n⚠️ VPN Tunnel 目录不存在: {vpn_tunnel_path}")
         
         print("\n✨ 处理完成！")
         
