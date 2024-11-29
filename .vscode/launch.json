@@ -21,7 +21,7 @@
             },
             "args": [
                 "--config",
-                "config.conf"
+                "/Users/zhaojianyin/Dev/VPN/leaf/config.json"
             ],
             "cwd": "${workspaceFolder}",
             "env": {
