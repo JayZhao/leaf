@@ -4,8 +4,6 @@ mod common;
 #[cfg(all(
     feature = "outbound-socks",
     feature = "inbound-socks",
-    feature = "outbound-shadowsocks",
-    feature = "inbound-shadowsocks",
     feature = "outbound-direct",
     feature = "outbound-static",
 ))]

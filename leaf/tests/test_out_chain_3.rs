@@ -4,12 +4,8 @@ mod common;
 #[cfg(all(
     feature = "outbound-socks",
     feature = "inbound-socks",
-    feature = "outbound-ws",
     feature = "outbound-trojan",
-    feature = "inbound-ws",
     feature = "inbound-trojan",
-    feature = "outbound-shadowsocks",
-    feature = "inbound-shadowsocks",
     feature = "outbound-direct",
     feature = "inbound-chain",
     feature = "outbound-chain",

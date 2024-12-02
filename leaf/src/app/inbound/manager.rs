@@ -15,18 +15,12 @@ use crate::Runner;
 use crate::proxy::amux;
 #[cfg(feature = "inbound-http")]
 use crate::proxy::http;
-#[cfg(feature = "inbound-quic")]
-use crate::proxy::quic;
-#[cfg(feature = "inbound-shadowsocks")]
-use crate::proxy::shadowsocks;
 #[cfg(feature = "inbound-socks")]
 use crate::proxy::socks;
 #[cfg(feature = "inbound-tls")]
 use crate::proxy::tls;
 #[cfg(feature = "inbound-trojan")]
 use crate::proxy::trojan;
-#[cfg(feature = "inbound-ws")]
-use crate::proxy::ws;
 
 #[cfg(feature = "inbound-chain")]
 use crate::proxy::chain;
@@ -96,26 +90,7 @@ impl InboundManager {
                     ));
                     handlers.insert(tag.clone(), handler);
                 }
-                #[cfg(feature = "inbound-shadowsocks")]
-                "shadowsocks" => {
-                    let settings =
-                        config::ShadowsocksInboundSettings::parse_from_bytes(&inbound.settings)
-                            .map_err(|e| anyhow!("invalid [{}] inbound settings: {}", &tag, e))?;
-                    let stream = Arc::new(shadowsocks::inbound::StreamHandler {
-                        cipher: settings.method.clone(),
-                        password: settings.password.clone(),
-                    });
-                    let datagram = Arc::new(shadowsocks::inbound::DatagramHandler {
-                        cipher: settings.method.clone(),
-                        password: settings.password.clone(),
-                    });
-                    let handler = Arc::new(proxy::inbound::Handler::new(
-                        tag.clone(),
-                        Some(stream),
-                        Some(datagram),
-                    ));
-                    handlers.insert(tag.clone(), handler);
-                }
+                
                 #[cfg(feature = "inbound-trojan")]
                 "trojan" => {
                     let settings =
@@ -130,34 +105,7 @@ impl InboundManager {
                     ));
                     handlers.insert(tag.clone(), handler);
                 }
-                #[cfg(feature = "inbound-ws")]
-                "ws" => {
-                    let settings =
-                        config::WebSocketInboundSettings::parse_from_bytes(&inbound.settings)?;
-                    let stream = Arc::new(ws::inbound::StreamHandler::new(settings.path.clone()));
-                    let handler = Arc::new(proxy::inbound::Handler::new(
-                        tag.clone(),
-                        Some(stream),
-                        None,
-                    ));
-                    handlers.insert(tag.clone(), handler);
-                }
-                #[cfg(feature = "inbound-quic")]
-                "quic" => {
-                    let settings =
-                        config::QuicInboundSettings::parse_from_bytes(&inbound.settings)?;
-                    let datagram = Arc::new(quic::inbound::DatagramHandler::new(
-                        settings.certificate.clone(),
-                        settings.certificate_key.clone(),
-                        settings.alpn.clone(),
-                    )?);
-                    let handler = Arc::new(proxy::inbound::Handler::new(
-                        tag.clone(),
-                        None,
-                        Some(datagram),
-                    ));
-                    handlers.insert(tag.clone(), handler);
-                }
+                
                 #[cfg(feature = "inbound-tls")]
                 "tls" => {
                     let settings = config::TlsInboundSettings::parse_from_bytes(&inbound.settings)?;

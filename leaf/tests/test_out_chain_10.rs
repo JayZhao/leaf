@@ -5,16 +5,12 @@ mod common;
     feature = "outbound-socks",
     feature = "inbound-socks",
     feature = "outbound-amux",
-    feature = "outbound-ws",
     feature = "outbound-trojan",
     feature = "inbound-amux",
-    feature = "inbound-ws",
     feature = "inbound-trojan",
     feature = "outbound-direct",
     feature = "inbound-chain",
     feature = "outbound-chain",
-    feature = "inbound-shadowsocks",
-    feature = "outbound-shadowsocks",
 ))]
 #[test]
 fn test_out_chain_10() {

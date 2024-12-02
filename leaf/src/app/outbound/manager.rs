@@ -33,12 +33,8 @@ use crate::proxy::direct;
 use crate::proxy::drop;
 #[cfg(feature = "outbound-obfs")]
 use crate::proxy::obfs;
-#[cfg(feature = "outbound-quic")]
-use crate::proxy::quic;
 #[cfg(feature = "outbound-redirect")]
 use crate::proxy::redirect;
-#[cfg(feature = "outbound-shadowsocks")]
-use crate::proxy::shadowsocks;
 #[cfg(feature = "outbound-socks")]
 use crate::proxy::socks;
 #[cfg(feature = "outbound-tls")]
@@ -47,8 +43,6 @@ use crate::proxy::tls;
 use crate::proxy::trojan;
 #[cfg(feature = "outbound-vmess")]
 use crate::proxy::vmess;
-#[cfg(feature = "outbound-ws")]
-use crate::proxy::ws;
 
 use crate::{
     app::SyncDnsClient,
@@ -166,30 +160,6 @@ impl OutboundManager {
                         .datagram_handler(datagram)
                         .build()
                 }
-                #[cfg(feature = "outbound-shadowsocks")]
-                "shadowsocks" => {
-                    let settings =
-                        config::ShadowsocksOutboundSettings::parse_from_bytes(&outbound.settings)
-                            .map_err(|e| anyhow!("invalid [{}] outbound settings: {}", &tag, e))?;
-                    let stream = Box::new(shadowsocks::outbound::StreamHandler::new(
-                        settings.address.clone(),
-                        settings.port as u16,
-                        settings.method.clone(),
-                        settings.password.clone(),
-                        settings.prefix.as_ref().cloned(),
-                    )?);
-                    let datagram = Box::new(shadowsocks::outbound::DatagramHandler {
-                        address: settings.address,
-                        port: settings.port as u16,
-                        cipher: settings.method,
-                        password: settings.password,
-                    });
-                    HandlerBuilder::default()
-                        .tag(tag.clone())
-                        .stream_handler(stream)
-                        .datagram_handler(datagram)
-                        .build()
-                }
                 #[cfg(feature = "outbound-obfs")]
                 "obfs" => {
                     let settings =
@@ -281,48 +251,7 @@ impl OutboundManager {
                         .stream_handler(stream)
                         .build()
                 }
-                #[cfg(feature = "outbound-ws")]
-                "ws" => {
-                    let settings =
-                        config::WebSocketOutboundSettings::parse_from_bytes(&outbound.settings)
-                            .map_err(|e| anyhow!("invalid [{}] outbound settings: {}", &tag, e))?;
-                    let stream = Box::new(ws::outbound::StreamHandler {
-                        path: settings.path.clone(),
-                        headers: settings.headers.clone(),
-                    });
-                    HandlerBuilder::default()
-                        .tag(tag.clone())
-                        .stream_handler(stream)
-                        .build()
-                }
-                #[cfg(feature = "outbound-quic")]
-                "quic" => {
-                    let settings =
-                        config::QuicOutboundSettings::parse_from_bytes(&outbound.settings)
-                            .map_err(|e| anyhow!("invalid [{}] outbound settings: {}", &tag, e))?;
-                    let server_name = if settings.server_name.is_empty() {
-                        None
-                    } else {
-                        Some(settings.server_name.clone())
-                    };
-                    let certificate = if settings.certificate.is_empty() {
-                        None
-                    } else {
-                        Some(settings.certificate.clone())
-                    };
-                    let stream = Box::new(quic::outbound::StreamHandler::new(
-                        settings.address.clone(),
-                        settings.port as u16,
-                        server_name,
-                        settings.alpn.clone(),
-                        certificate,
-                        dns_client.clone(),
-                    ));
-                    HandlerBuilder::default()
-                        .tag(tag.clone())
-                        .stream_handler(stream)
-                        .build()
-                }
+                
                 _ => continue,
             };
             cached_handlers.push(HandlerCacheEntry {

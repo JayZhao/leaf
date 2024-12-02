@@ -19,7 +19,6 @@ trojan-only = [
     "inbound-tun",
     "outbound-direct",
     "outbound-tls",
-    "outbound-ws",
     "outbound-trojan",
     "outbound-chain",
     "aws-lc-aead",
@@ -66,12 +65,9 @@ all-endpoints = [
     # inbounds
     "inbound-chain",
     "inbound-amux",
-    # "inbound-quic",
-    "inbound-ws",
     "inbound-tls",
     "inbound-trojan",
     "inbound-http",
-    "inbound-shadowsocks",
     "inbound-socks",
     "inbound-tun",
     "inbound-cat",
@@ -79,15 +75,12 @@ all-endpoints = [
     "outbound-direct",
     "outbound-drop",
     "outbound-redirect",
-    "outbound-shadowsocks",
     "outbound-obfs",
     "outbound-socks",
     "outbound-trojan",
     "outbound-tls",
-    "outbound-ws",
     "outbound-amux",
     "outbound-vmess",
-    # "outbound-quic",
     "outbound-failover",
     "outbound-static",
     "outbound-tryall",
@@ -112,30 +105,24 @@ config-json = ["serde", "serde_derive", "serde_json"]
 outbound-direct = []
 outbound-drop = []
 outbound-redirect = []
-outbound-shadowsocks = ["hkdf", "sha-1", "md-5", "percent-encoding", "tokio-util"]
 outbound-obfs = ["base64", "memchr"]
 outbound-socks = ["async-socks5"]
 outbound-trojan = ["sha2", "hex"]
 outbound-tls = []
-outbound-ws = ["tungstenite", "tokio-tungstenite", "url", "http"]
 outbound-failover = ["lru_time_cache"]
 outbound-static= []
 outbound-tryall = []
 outbound-chain = []
 outbound-amux= ["tokio-util"]
-outbound-quic = ["quinn", "rustls", "webpki-roots-old", "rustls-pemfile-old"]
 outbound-select = ["directories"]
 outbound-vmess = ["lz_fnv", "cfb-mode", "hmac", "aes", "sha3", "digest", "uuid", "md-5", "tokio-util", "byteorder"]
 
 # Inbounds
 inbound-trojan = ["sha2", "hex"]
-inbound-shadowsocks = ["hkdf", "sha-1", "md-5", "tokio-util"]
 inbound-socks = []
 inbound-http = ["http"]
 inbound-tun = ["tun", "netstack-lwip", "pnet_datalink"]
-inbound-ws = ["tungstenite", "tokio-tungstenite", "url", "http"]
 inbound-amux = ["tokio-util"]
-inbound-quic = ["quinn", "rustls", "rustls-pemfile-old"]
 inbound-tls = []
 inbound-chain = []
 inbound-cat = ["tokio/io-std"]
@@ -249,10 +236,6 @@ lru_time_cache = { version = "0.11", optional = true }
 
 # amux
 tokio-util = { version = "0.7", default-features = false, features = ["io"], optional = true }
-
-# QUIC
-quinn = { version = "0.10", default-features = false, features = ["tls-rustls", "runtime-tokio"], optional = true }
-rustls = { version = "0.21", optional = true }
 
 # API
 warp = { version = "0.3", default-features = false, optional = true }
