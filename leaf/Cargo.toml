@@ -140,13 +140,13 @@ protobuf = "=3.6.0"
 thiserror = "1.0"
 futures = "0.3"
 async-trait = "0.1"
-bytes = "1.6"
-lazy_static = "1.4"
+bytes = "1.9"
+lazy_static = "1.5"
 anyhow = "1.0"
 rand = "0.8"
 socket2 = "0.5"
 async-recursion = "1.1"
-publicsuffix = "2.2"
+publicsuffix = "2.3"
 
 # DNS
 trust-dns-proto = { version = "0.23", default-features = false }
@@ -177,19 +177,19 @@ serde_derive = { version = "1.0", optional = true }
 serde = { version = "1.0", optional = true }
 
 # config-conf
-regex = { version = "1.10", optional = true }
+regex = { version = "1.11", optional = true }
 
 openssl = { version = "0.10", features = ["vendored"], optional = true }
 
 ring = { version = "0.17", optional = true }
 
-aws-lc-rs = { version = "1.7", features = ["bindgen"], optional = true }
+aws-lc-rs = { version = "1.11", features = ["bindgen"], optional = true }
 
 # TLS/rustls/QUIC
 tokio-rustls = { version = "0.26", default-features = false, features = ["logging", "tls12"], optional = true }
 webpki-roots = { version = "0.26", optional = true }
 webpki-roots-old = { package = "webpki-roots", version = "0.25", optional = true }
-rustls-pemfile = { version = "2.1", optional = true }
+rustls-pemfile = { version = "2.2", optional = true }
 rustls-pemfile-old = { package = "rustls-pemfile", version = "1.0", optional = true }
 
 # TLS/openssl
@@ -265,6 +265,6 @@ sha2 = "0.10"
 tokio = { version = "1", features = ["fs", "sync", "io-util", "net", "time", "rt", "rt-multi-thread"] }
 
 [build-dependencies]
-cc = "1.0"
+cc = "1.2"
 bindgen = "0.69"
 protobuf-codegen = "=3.6.0"
