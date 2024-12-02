@@ -81,6 +81,11 @@ pub struct Proxy {
     pub amux_max_lifetime: Option<u64>,
 
     pub quic: Option<bool>,
+
+    // hysteria
+    pub hysteria_server: Option<String>,
+    pub hysteria_auth: Option<String>,
+    pub hysteria_sni: Option<String>,
 }
 
 impl Default for Proxy {
@@ -111,6 +116,9 @@ impl Default for Proxy {
             amux_max_recv: Some(0),
             amux_max_lifetime: Some(0),
             quic: Some(false),
+            hysteria_server: None,
+            hysteria_auth: None,
+            hysteria_sni: None,
         }
     }
 }
@@ -505,9 +513,24 @@ pub fn from_lines(lines: Vec<io::Result<String>>) -> Result<Config> {
         };
         proxy.port = Some(port);
 
+        // Add support for hysteria protocol
+        if proxy.protocol == "hysteria" {
+            if params.len() < 4 {
+                continue; // server, auth, and sni are required
+            }
+            proxy.hysteria_server = Some(format!("{}:{}", params[0], params[1]));
+            proxy.hysteria_auth = Some(params[2].clone());
+            proxy.hysteria_sni = Some(params[3].clone());
+        }
+
         // compat
         if let "ss" = proxy.protocol.as_str() {
             proxy.protocol = "shadowsocks".to_string();
+        }
+
+        // ... in the proxy parsing section ...
+        if params.len() < 2 {
+            continue;
         }
 
         proxies.push(proxy);
@@ -888,58 +911,6 @@ pub fn to_internal(conf: &mut Config) -> Result<internal::Config> {
                     outbound.settings = settings;
                     outbounds.push(outbound);
                 }
-                "shadowsocks" => {
-                    let mut settings = internal::ShadowsocksOutboundSettings::new();
-                    if let Some(ext_address) = &ext_proxy.address {
-                        settings.address = ext_address.clone();
-                    }
-                    if let Some(ext_port) = &ext_proxy.port {
-                        settings.port = *ext_port as u32;
-                    }
-                    if let Some(ext_encrypt_method) = &ext_proxy.encrypt_method {
-                        settings.method = ext_encrypt_method.clone();
-                    } else {
-                        settings.method = "chacha20-ietf-poly1305".to_string();
-                    }
-                    settings.prefix = ext_proxy.prefix.clone();
-                    if let Some(ext_password) = &ext_proxy.password {
-                        settings.password = ext_password.clone();
-                    }
-                    if let Some(obfs) = &ext_proxy.obfs_type {
-                        outbound.tag = format!("{}_ss_xxx", ext_proxy.tag.clone());
-                        // obfs
-                        let mut obfs_outbound = internal::Outbound::new();
-                        obfs_outbound.protocol = "obfs".to_string();
-                        let mut obfs_settings = internal::ObfsOutboundSettings::new();
-                        obfs_settings.method = obfs.clone();
-                        if let Some(ext_obfs_host) = &ext_proxy.obfs_host {
-                            obfs_settings.host = ext_obfs_host.clone();
-                        }
-                        obfs_settings.path =
-                            ext_proxy.obfs_path.as_deref().unwrap_or("/").to_string();
-                        let obfs_settings = obfs_settings.write_to_bytes().unwrap();
-                        obfs_outbound.settings = obfs_settings;
-                        obfs_outbound.tag = format!("{}_obfs_xxx", ext_proxy.tag.clone());
-
-                        // chain
-                        let mut chain_outbound = internal::Outbound::new();
-                        chain_outbound.tag = ext_proxy.tag.clone();
-                        let mut chain_settings = internal::ChainOutboundSettings::new();
-                        chain_settings.actors.push(obfs_outbound.tag.clone());
-                        chain_settings.actors.push(outbound.tag.clone());
-                        let chain_settings = chain_settings.write_to_bytes().unwrap();
-                        chain_outbound.settings = chain_settings;
-                        chain_outbound.protocol = "chain".to_string();
-
-                        // always push chain first, in case there isn't final rule,
-                        // the chain outbound will be the default one to use
-                        outbounds.push(chain_outbound);
-                        outbounds.push(obfs_outbound);
-                    }
-                    let settings = settings.write_to_bytes().unwrap();
-                    outbound.settings = settings;
-                    outbounds.push(outbound);
-                }
                 "trojan" => {
                     // tls
                     let mut tls_outbound = internal::Outbound::new();
@@ -1247,6 +1218,21 @@ pub fn to_internal(conf: &mut Config) -> Result<internal::Config> {
                         outbound.tag = ext_proxy.tag.clone();
                         outbounds.push(outbound);
                     }
+                }
+                "hysteria" => {
+                    let mut settings = internal::HysteriaOutboundSettings::new();
+                    if let Some(ext_server) = &ext_proxy.hysteria_server {
+                        settings.server = ext_server.clone();
+                    }
+                    if let Some(ext_auth) = &ext_proxy.hysteria_auth {
+                        settings.auth = ext_auth.clone();
+                    }
+                    if let Some(ext_server_name) = &ext_proxy.hysteria_sni {
+                        settings.server_name = ext_server_name.clone();
+                    }
+                    let settings = settings.write_to_bytes().unwrap();
+                    outbound.settings = settings;
+                    outbounds.push(outbound);
                 }
                 _ => {}
             }

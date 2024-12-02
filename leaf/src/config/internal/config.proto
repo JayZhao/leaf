@@ -225,6 +225,12 @@ message PluginOutboundSettings {
 	string args = 2;
 }
 
+message HysteriaOutboundSettings {
+    string server = 1;        // ip:port
+    string auth = 2;         // Auth password
+    string server_name = 3;  // SNI
+}
+
 message Outbound {
 	string tag = 1;
 	string protocol = 2; // TODO use enum

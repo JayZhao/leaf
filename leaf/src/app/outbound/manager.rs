@@ -44,6 +44,8 @@ use crate::proxy::trojan;
 #[cfg(feature = "outbound-vmess")]
 use crate::proxy::vmess;
 
+use crate::proxy::hysteria;
+
 use crate::{
     app::SyncDnsClient,
     config::{self, Outbound},
@@ -52,6 +54,8 @@ use crate::{
 
 #[cfg(feature = "outbound-select")]
 use super::selector::OutboundSelector;
+
+
 
 pub struct OutboundManager {
     handlers: HashMap<String, AnyOutboundHandler>,
@@ -246,6 +250,22 @@ impl OutboundManager {
                         certificate,
                         settings.insecure,
                     )?);
+                    HandlerBuilder::default()
+                        .tag(tag.clone())
+                        .stream_handler(stream)
+                        .build()
+                }
+                "hysteria" => {
+                    let settings =
+                        config::HysteriaOutboundSettings::parse_from_bytes(&outbound.settings)
+                            .map_err(|e| anyhow!("invalid [{}] outbound settings: {}", &tag, e))?;
+                    
+                    let stream = Box::new(hysteria::outbound::Handler::new(
+                        settings.server,
+                        settings.auth,
+                        settings.server_name,
+                    )?);
+
                     HandlerBuilder::default()
                         .tag(tag.clone())
                         .stream_handler(stream)

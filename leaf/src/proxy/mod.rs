@@ -77,6 +77,8 @@ pub mod tun;
 #[cfg(feature = "outbound-vmess")]
 pub mod vmess;
 
+pub mod hysteria;
+
 pub use datagram::*;
 
 #[derive(Error, Debug)]

@@ -11,7 +11,7 @@ path = "src/lib.rs"
 
 [features]
 default = [
-    "default-ring"
+    "default-ring",
 ]
 
 trojan-only = [
@@ -242,6 +242,8 @@ warp = { version = "0.3", default-features = false, optional = true }
 
 # Auto reload
 notify = { version = "7", optional = true }
+
+hysteria-rust = { git = "https://github.com/RelyVPN/hysteria-rust", branch = "main" }
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
