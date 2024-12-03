@@ -509,14 +509,11 @@ impl Router {
             }
         }
 
-        // When no rules match, default to "trojan_out" tag
-        let default_target = "trojan_out".to_string();
-        info!("⚡ no rules matched, using default route [{}] for [{}]", default_target, sess.destination);
-        self.route_cache.write().unwrap().insert(
-            cache_key,
-            default_target.clone()
-        );
-        Ok(default_target)
+        Err(anyhow!("no rules matched"))
+    }
+
+    pub fn cache_route(&self, key: String, tag: String) {
+        self.route_cache.write().unwrap().insert(key, tag);
     }
 }
 

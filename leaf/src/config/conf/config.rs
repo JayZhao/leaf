@@ -83,7 +83,6 @@ pub struct Proxy {
     pub quic: Option<bool>,
 
     // hysteria
-    pub hysteria_server: Option<String>,
     pub hysteria_auth: Option<String>,
     pub hysteria_sni: Option<String>,
 }
@@ -116,7 +115,6 @@ impl Default for Proxy {
             amux_max_recv: Some(0),
             amux_max_lifetime: Some(0),
             quic: Some(false),
-            hysteria_server: None,
             hysteria_auth: None,
             hysteria_sni: None,
         }
@@ -513,24 +511,19 @@ pub fn from_lines(lines: Vec<io::Result<String>>) -> Result<Config> {
         };
         proxy.port = Some(port);
 
+        let params = &params[2..];
+
         // Add support for hysteria protocol
-        if proxy.protocol == "hysteria" {
-            if params.len() < 4 {
-                continue; // server, auth, and sni are required
-            }
-            proxy.hysteria_server = Some(format!("{}:{}", params[0], params[1]));
-            proxy.hysteria_auth = Some(params[2].clone());
-            proxy.hysteria_sni = Some(params[3].clone());
-        }
-
-        // compat
-        if let "ss" = proxy.protocol.as_str() {
-            proxy.protocol = "shadowsocks".to_string();
-        }
-
-        // ... in the proxy parsing section ...
-        if params.len() < 2 {
-            continue;
+        if proxy.protocol == "hysteria" && params.len() >= 2 {
+            proxy.hysteria_auth = Some(params[0].clone()); // Auth token
+            proxy.hysteria_sni = Some(params[1].clone()); // SNI
+            
+            println!("[Config] Parsed hysteria proxy: address={}, port={}, auth={}, sni={}", 
+                proxy.address.as_ref().unwrap(),
+                proxy.port.as_ref().unwrap(),
+                proxy.hysteria_auth.as_ref().unwrap(),
+                proxy.hysteria_sni.as_ref().unwrap()
+            );
         }
 
         proxies.push(proxy);
@@ -1221,14 +1214,16 @@ pub fn to_internal(conf: &mut Config) -> Result<internal::Config> {
                 }
                 "hysteria" => {
                     let mut settings = internal::HysteriaOutboundSettings::new();
-                    if let Some(ext_server) = &ext_proxy.hysteria_server {
-                        settings.server = ext_server.clone();
+                    if let Some(ext_address) = &ext_proxy.address {
+                        if let Some(ext_port) = &ext_proxy.port {
+                            settings.server = format!("{}:{}", ext_address, ext_port);
+                        }
                     }
                     if let Some(ext_auth) = &ext_proxy.hysteria_auth {
                         settings.auth = ext_auth.clone();
                     }
-                    if let Some(ext_server_name) = &ext_proxy.hysteria_sni {
-                        settings.server_name = ext_server_name.clone();
+                    if let Some(ext_sni) = &ext_proxy.hysteria_sni {
+                        settings.server_name = ext_sni.clone();
                     }
                     let settings = settings.write_to_bytes().unwrap();
                     outbound.settings = settings;

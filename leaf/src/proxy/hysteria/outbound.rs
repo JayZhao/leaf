@@ -7,6 +7,7 @@ use std::{
     task::{Context, Poll},
     io,
 };
+use tracing::{debug, info, warn, error};
 
 use crate::{proxy::*, session::Session};
 use ::hysteria::{Config, HysteriaClient, quinn};
@@ -28,7 +29,7 @@ impl AsyncRead for HysteriaStream {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         // 从接收流中读取数据
-        println!("开始从接收流中读取数据");
+        debug!(target: "hysteria", "[Hysteria客户端] 开始从接收流中读取数据");
         Pin::new(&mut self.recv).poll_read(cx, buf)
     }
 }
@@ -40,18 +41,18 @@ impl AsyncWrite for HysteriaStream {
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
         // 向发送流中写入数据
-        println!("开始向发送流中写入数据");
+        debug!(target: "hysteria", "[Hysteria客户端] 开始向发送流中写入数据");
         match Pin::new(&mut self.send).poll_write(cx, buf) {
             Poll::Ready(Ok(n)) => {
-                println!("成功写入 {} 字节", n);
+                info!(target: "hysteria", "[Hysteria客户端] 成功写入 {} 字节", n);
                 Poll::Ready(Ok(n))
             },
             Poll::Ready(Err(e)) => {
-                println!("写入失败: {}", e);
+                error!(target: "hysteria", "[Hysteria客户端] 写入失败: {}", e);
                 Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)))
             },
             Poll::Pending => {
-                println!("写入操作挂起");
+                debug!(target: "hysteria", "[Hysteria客户端] 写入操作挂起");
                 Poll::Pending
             },
         }
@@ -62,18 +63,18 @@ impl AsyncWrite for HysteriaStream {
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<()>> {
         // 刷新发送流
-        println!("开始刷新发送流");
+        debug!(target: "hysteria", "[Hysteria客户端] 开始刷新发送流");
         match Pin::new(&mut self.send).poll_flush(cx) {
             Poll::Ready(Ok(())) => {
-                println!("刷新成功");
+                info!(target: "hysteria", "[Hysteria客户端] 刷新成功");
                 Poll::Ready(Ok(()))
             },
             Poll::Ready(Err(e)) => {
-                println!("刷新失败: {}", e);
+                error!(target: "hysteria", "[Hysteria客户端] 刷新失败: {}", e);
                 Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)))
             },
             Poll::Pending => {
-                println!("刷新操作挂起");
+                debug!(target: "hysteria", "[Hysteria客户端] 刷新操作挂起");
                 Poll::Pending
             },
         }
@@ -84,18 +85,18 @@ impl AsyncWrite for HysteriaStream {
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<()>> {
         // 关闭发送流
-        println!("开始关闭发送流");
+        debug!(target: "hysteria", "[Hysteria客户端] 开始关闭发送流");
         match Pin::new(&mut self.send).poll_shutdown(cx) {
             Poll::Ready(Ok(())) => {
-                println!("关闭成功");
+                info!(target: "hysteria", "[Hysteria客户端] 关闭成功");
                 Poll::Ready(Ok(()))
             },
             Poll::Ready(Err(e)) => {
-                println!("关闭失败: {}", e);
+                error!(target: "hysteria", "[Hysteria客户端] 关闭失败: {}", e);
                 Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)))
             },
             Poll::Pending => {
-                println!("关闭操作挂起");
+                debug!(target: "hysteria", "[Hysteria客户端] 关闭操作挂起");
                 Poll::Pending
             },
         }

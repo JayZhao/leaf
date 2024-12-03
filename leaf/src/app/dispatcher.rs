@@ -135,10 +135,17 @@ impl Dispatcher {
                 Err(err) => {
                     debug!("pick route failed: {}", err);
                     if let Some(tag) = self.outbound_manager.read().await.default_handler() {
-                        debug!(
-                            "picked default route [{}] for {} -> {}",
-                            tag, &sess.source, &sess.destination
+                        info!(
+                            "⚡ using default route [{}] for [{}]",
+                            tag, &sess.destination
                         );
+                        
+                        // Cache the default route using the same router lock
+                        router.cache_route(
+                            sess.destination.to_string(),
+                            tag.clone()
+                        );
+                        
                         tag
                     } else {
                         warn!("can not find any handlers");

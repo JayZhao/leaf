@@ -7,7 +7,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'leaf'",
+            "name": "Debug Leaf + Hysteria",
             "cargo": {
                 "args": [
                     "build",
@@ -21,11 +21,12 @@
             },
             "args": [
                 "--config",
-                "/Users/zhaojianyin/Dev/VPN/leaf/config.json"
+                "/Users/zhaojianyin/Dev/VPN/leaf/config.conf"
             ],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_BACKTRACE": "1"
+                "RUST_BACKTRACE": "1",
+                "RUST_LOG": "debug"
             }
         },
         {
