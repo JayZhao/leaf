@@ -7,7 +7,7 @@ use std::{
     task::{Context, Poll},
     io,
 };
-use tracing::{debug, info, warn, error};
+use tracing::{debug, info, error};
 
 use crate::{proxy::*, session::Session};
 use ::hysteria::{Config, HysteriaClient, quinn};
@@ -16,20 +16,17 @@ pub struct Handler {
     client: Arc<HysteriaClient>,
 }
 
-// 实现一个包装 QUIC streams 的 ProxyStream
 struct HysteriaStream {
-    send: quinn::SendStream, // 发送流
-    recv: quinn::RecvStream, // 接收流
+    send: quinn::SendStream,
+    recv: quinn::RecvStream,
 }
-
+  
 impl AsyncRead for HysteriaStream {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        // 从接收流中读取数据
-        debug!(target: "hysteria", "[Hysteria客户端] 开始从接收流中读取数据");
         Pin::new(&mut self.recv).poll_read(cx, buf)
     }
 }
@@ -40,7 +37,6 @@ impl AsyncWrite for HysteriaStream {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        // 向发送流中写入数据
         debug!(target: "hysteria", "[Hysteria客户端] 开始向发送流中写入数据");
         match Pin::new(&mut self.send).poll_write(cx, buf) {
             Poll::Ready(Ok(n)) => {
@@ -62,7 +58,6 @@ impl AsyncWrite for HysteriaStream {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<()>> {
-        // 刷新发送流
         debug!(target: "hysteria", "[Hysteria客户端] 开始刷新发送流");
         match Pin::new(&mut self.send).poll_flush(cx) {
             Poll::Ready(Ok(())) => {
@@ -84,7 +79,6 @@ impl AsyncWrite for HysteriaStream {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<()>> {
-        // 关闭发送流
         debug!(target: "hysteria", "[Hysteria客户端] 开始关闭发送流");
         match Pin::new(&mut self.send).poll_shutdown(cx) {
             Poll::Ready(Ok(())) => {
@@ -106,7 +100,6 @@ impl AsyncWrite for HysteriaStream {
 #[async_trait]
 impl OutboundStreamHandler for Handler {
     fn connect_addr(&self) -> OutboundConnect {
-        // 作为终端协议，使用 Unknown 表示自己处理连接
         OutboundConnect::Unknown
     }
 
@@ -116,54 +109,48 @@ impl OutboundStreamHandler for Handler {
         _lhs: Option<&mut AnyStream>,
         _stream: Option<AnyStream>,
     ) -> io::Result<AnyStream> {
-        // 获取目标地址字符串
-        let dest = sess.destination.to_string();
-        
-        // 使用 hysteria client 建立 TCP 连接
-        let (send, recv) = self.client
-            .tcp_connect(&dest)
+        let dest = match &sess.destination {
+            SocksAddr::Ip(addr) => addr.to_string(),
+            SocksAddr::Domain(domain, port) => format!("{}:{}", domain, port),
+        };
+    
+        let (send, recv) = self.client.tcp_connect(&dest)
             .await
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("connect failed: {}", e)))?;
-
-        // 包装成 HysteriaStream
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+    
         Ok(Box::new(HysteriaStream { send, recv }))
     }
 }
 
 impl Handler {
     pub fn new(
-        server: String,
+        server_ip: String,
+        server_port: u16,
         auth: String,
-        server_name: String,
     ) -> Result<Self> {
-        let config = Config::new(
-            server.clone(),
+        let config = Config {
+            server_ip,
+            server_port,
             auth,
-            server_name,
-        );
+        };
         
-        let mut client = HysteriaClient::new(config);
-        
-        // 在创建时就进行连接和认证
+        let client = HysteriaClient::new(config)?;
         tokio::runtime::Handle::current().block_on(async {
-            client.connect_and_authenticate().await?;
-            Ok::<_, anyhow::Error>(())
+            client.connect_and_authenticate()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to authenticate: {}", e))
         })?;
 
-        Ok(Handler {
+        Ok(Handler { 
             client: Arc::new(client)
         })
     }
 }
 
-
 impl Drop for Handler {
     fn drop(&mut self) {
-        // 确保资源正确清理
-        if Arc::strong_count(&self.client) == 1 {
-            tokio::runtime::Handle::current().block_on(async {
-                Arc::get_mut(&mut self.client).unwrap().shutdown().await;
-            });
-        }
+        tokio::runtime::Handle::current().block_on(async {
+            self.client.shutdown().await;
+        });
     }
 }

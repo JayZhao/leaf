@@ -3683,12 +3683,12 @@ impl ::protobuf::Message for PluginOutboundSettings {
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct HysteriaOutboundSettings {
     // message fields
-    // @@protoc_insertion_point(field:HysteriaOutboundSettings.server)
-    pub server: ::std::string::String,
+    // @@protoc_insertion_point(field:HysteriaOutboundSettings.server_ip)
+    pub server_ip: ::std::string::String,
+    // @@protoc_insertion_point(field:HysteriaOutboundSettings.server_port)
+    pub server_port: u32,
     // @@protoc_insertion_point(field:HysteriaOutboundSettings.auth)
     pub auth: ::std::string::String,
-    // @@protoc_insertion_point(field:HysteriaOutboundSettings.server_name)
-    pub server_name: ::std::string::String,
     // special fields
     // @@protoc_insertion_point(special_field:HysteriaOutboundSettings.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -3717,13 +3717,13 @@ impl ::protobuf::Message for HysteriaOutboundSettings {
         while let Some(tag) = is.read_raw_tag_or_eof()? {
             match tag {
                 10 => {
-                    self.server = is.read_string()?;
+                    self.server_ip = is.read_string()?;
                 },
-                18 => {
-                    self.auth = is.read_string()?;
+                16 => {
+                    self.server_port = is.read_uint32()?;
                 },
                 26 => {
-                    self.server_name = is.read_string()?;
+                    self.auth = is.read_string()?;
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -3737,14 +3737,14 @@ impl ::protobuf::Message for HysteriaOutboundSettings {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u64 {
         let mut my_size = 0;
-        if !self.server.is_empty() {
-            my_size += ::protobuf::rt::string_size(1, &self.server);
+        if !self.server_ip.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.server_ip);
+        }
+        if self.server_port != 0 {
+            my_size += ::protobuf::rt::uint32_size(2, self.server_port);
         }
         if !self.auth.is_empty() {
-            my_size += ::protobuf::rt::string_size(2, &self.auth);
-        }
-        if !self.server_name.is_empty() {
-            my_size += ::protobuf::rt::string_size(3, &self.server_name);
+            my_size += ::protobuf::rt::string_size(3, &self.auth);
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
@@ -3752,14 +3752,14 @@ impl ::protobuf::Message for HysteriaOutboundSettings {
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-        if !self.server.is_empty() {
-            os.write_string(1, &self.server)?;
+        if !self.server_ip.is_empty() {
+            os.write_string(1, &self.server_ip)?;
+        }
+        if self.server_port != 0 {
+            os.write_uint32(2, self.server_port)?;
         }
         if !self.auth.is_empty() {
-            os.write_string(2, &self.auth)?;
-        }
-        if !self.server_name.is_empty() {
-            os.write_string(3, &self.server_name)?;
+            os.write_string(3, &self.auth)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -3778,17 +3778,17 @@ impl ::protobuf::Message for HysteriaOutboundSettings {
     }
 
     fn clear(&mut self) {
-        self.server.clear();
+        self.server_ip.clear();
+        self.server_port = 0;
         self.auth.clear();
-        self.server_name.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static HysteriaOutboundSettings {
         static instance: HysteriaOutboundSettings = HysteriaOutboundSettings {
-            server: ::std::string::String::new(),
+            server_ip: ::std::string::String::new(),
+            server_port: 0,
             auth: ::std::string::String::new(),
-            server_name: ::std::string::String::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance

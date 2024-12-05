@@ -1215,15 +1215,13 @@ pub fn to_internal(conf: &mut Config) -> Result<internal::Config> {
                 "hysteria" => {
                     let mut settings = internal::HysteriaOutboundSettings::new();
                     if let Some(ext_address) = &ext_proxy.address {
-                        if let Some(ext_port) = &ext_proxy.port {
-                            settings.server = format!("{}:{}", ext_address, ext_port);
-                        }
+                        settings.server_ip = ext_address.clone();
+                    }
+                    if let Some(ext_port) = &ext_proxy.port {
+                        settings.server_port = *ext_port as u32;
                     }
                     if let Some(ext_auth) = &ext_proxy.hysteria_auth {
                         settings.auth = ext_auth.clone();
-                    }
-                    if let Some(ext_sni) = &ext_proxy.hysteria_sni {
-                        settings.server_name = ext_sni.clone();
                     }
                     let settings = settings.write_to_bytes().unwrap();
                     outbound.settings = settings;

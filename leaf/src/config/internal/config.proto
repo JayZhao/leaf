@@ -226,9 +226,9 @@ message PluginOutboundSettings {
 }
 
 message HysteriaOutboundSettings {
-    string server = 1;        // ip:port
-    string auth = 2;         // Auth password
-    string server_name = 3;  // SNI
+    string server_ip = 1;        
+    uint32 server_port = 2;         
+    string auth = 3; 
 }
 
 message Outbound {

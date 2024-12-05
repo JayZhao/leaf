@@ -261,9 +261,9 @@ impl OutboundManager {
                             .map_err(|e| anyhow!("invalid [{}] outbound settings: {}", &tag, e))?;
                     
                     let stream = Box::new(hysteria::outbound::Handler::new(
-                        settings.server,
+                        settings.server_ip,
+                        settings.server_port as u16,
                         settings.auth,
-                        settings.server_name,
                     )?);
 
                     HandlerBuilder::default()
