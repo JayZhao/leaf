@@ -31,25 +31,14 @@
         },
         {
             "type": "lldb",
-            "request": "launch",
-            "name": "Debug domain_rule tests",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--lib",
-                    "--package=leaf"
-                ],
-                "filter": {
-                    "name": "leaf",
-                    "kind": "lib"
-                }
-            },
-            "args": ["config::domain_rule", "--nocapture", "--test-threads=1"],
-            "cwd": "${workspaceFolder}",
-            "env": {
-                "RUST_BACKTRACE": "1"
-            }
+            "request": "attach",
+            "name": "Attach to RelyVPNTunnel",
+            "program": "${workspaceFolder}/target/debug/leaf",
+            "pid": "${command:pickProcess}",
+            "initCommands": [
+                "process handle -p true -s false -n false SIGPIPE"
+            ],
+            "internalConsoleOptions": "openOnSessionStart",
         }
     ]
 }
