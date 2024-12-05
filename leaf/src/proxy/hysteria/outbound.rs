@@ -128,7 +128,7 @@ impl Handler {
         server_port: u16,
         auth: String,
     ) -> Result<Self> {
-        info!(target: "hysteria", "[Hysteria客户端] 开始创建新的Handler，服务器地址: {}:{}", server_ip, server_port);
+        info!(target: "hysteria", "[Hysteria客户端] 创建新Handler: {}:{}", server_ip, server_port);
         
         let config = Config {
             server_ip,
@@ -136,46 +136,12 @@ impl Handler {
             auth,
         };
         
-        debug!(target: "hysteria", "[Hysteria客户端] 使用配置创建新的HysteriaClient实例");
         let client = HysteriaClient::new(config)?;
         
-        let runtime = tokio::runtime::Handle::current();
-        info!(
-            target: "hysteria",
-            "[Hysteria客户端] Runtime诊断信息 - Runtime类型: {:?}, 是否在Tokio线程内: {}, 当前线程名称: {}",
-            runtime.runtime_flavor(),
-            tokio::runtime::Handle::try_current().is_ok(),
-            std::thread::current().name().unwrap_or("unnamed"),
-        );
-        
-        info!(target: "hysteria", "[Hysteria客户端] 准备进行认证，将创建新的Runtime执行认证");
-        let result = {
-            debug!(target: "hysteria", "[Hysteria客户端] 开始创建新的Runtime");
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|e| anyhow::anyhow!("创建Runtime失败: {}", e))?;
-            
-            debug!(target: "hysteria", "[Hysteria客户端] 新Runtime创建成功，准备执行认证");
-            let auth_future = async {
-                debug!(target: "hysteria", "[Hysteria客户端] 进入block_on块，开始认证");
-                let auth_result = client.connect_and_authenticate().await;
-                debug!(target: "hysteria", "[Hysteria客户端] 认证过程完成");
-                auth_result.map_err(|e| anyhow::anyhow!("认证失败: {}", e))
-            };
+        tokio::runtime::Handle::current()
+            .block_on(client.connect_and_authenticate())
+            .map_err(|e| anyhow::anyhow!("认证失败: {}", e))?;
 
-            debug!(target: "hysteria", "[Hysteria客户端] 调用block_on执行认证");
-            rt.block_on(auth_future)
-        };
-
-        match &result {
-            Ok(_) => info!(target: "hysteria", "[Hysteria客户端] 认证成功"),
-            Err(e) => error!(target: "hysteria", "[Hysteria客户端] 认证失败: {}", e),
-        }
-
-        result?;
-
-        info!(target: "hysteria", "[Hysteria客户端] Handler创建完成");
         Ok(Handler { 
             client: Arc::new(client)
         })
