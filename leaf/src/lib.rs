@@ -3,6 +3,7 @@ use std::io;
 use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 use std::sync::Mutex;
+use tokio_rustls::rustls;
 
 use anyhow::anyhow;
 use lazy_static::lazy_static;
@@ -363,6 +364,8 @@ pub struct StartOptions {
 }
 
 pub fn start(rt_id: RuntimeId, opts: StartOptions) -> Result<(), Error> {
+    rustls::crypto::ring::default_provider().install_default().unwrap();
+
     #[cfg(debug_assertions)]
     println!("start with options:\n{:#?}", opts);
 

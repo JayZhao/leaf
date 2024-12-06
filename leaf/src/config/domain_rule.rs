@@ -3,6 +3,7 @@ use std::io::Read;
 use lazy_static::lazy_static;
 use std::sync::Arc;
 use tracing::{info, error};
+use std::path::Path;
 
 pub struct DomainRule {
     binary_domains: Vec<u128>,
@@ -92,29 +93,8 @@ impl DomainRule {
     }
 
     pub fn new() -> std::io::Result<Self> {
-        let exe_path = std::env::current_exe()?;
-        let exe_dir = if cfg!(test) {
-            exe_path.parent()
-                .ok_or_else(|| std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Could not determine deps directory"
-                ))?
-                .parent()
-                .ok_or_else(|| std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Could not determine debug directory"
-                ))?
-                .to_path_buf()
-        } else {
-            exe_path.parent()
-                .ok_or_else(|| std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Could not determine executable directory"
-                ))?
-                .to_path_buf()
-        };
-
-        let binary_path = exe_dir.join("site_cn_binary.dat");
+        let asset_loc = Path::new(&*crate::option::ASSET_LOCATION);
+        let binary_path = asset_loc.join("site_cn_binary.dat");
 
         info!("📂 Attempting to load binary file: {}", binary_path.display());
         

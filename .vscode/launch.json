@@ -21,12 +21,13 @@
             },
             "args": [
                 "--config",
-                "/Users/zhaojianyin/Dev/VPN/leaf/config.conf"
+                "config.conf"
             ],
             "cwd": "${workspaceFolder}",
             "env": {
                 "RUST_BACKTRACE": "1",
-                "RUST_LOG": "info"
+                "RUST_LOG": "info",
+                "ASSET_LOCATION": "${workspaceFolder}"
             }
         },
         {

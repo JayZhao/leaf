@@ -68,6 +68,7 @@ struct Args {
 }
 
 fn main() {
+
     let args: Args = argh::from_env();
 
     if args.version {
