@@ -127,7 +127,7 @@ impl Handler {
         server_ip: String,
         server_port: u16,
         auth: String,
-    ) -> Result<Self> {
+    ) -> Result<(Self, Arc<HysteriaClient>)> {
         info!(target: "hysteria", "[Hysteria客户端] 创建新Handler: {}:{}", server_ip, server_port);
         
         let config = Config {
@@ -136,15 +136,15 @@ impl Handler {
             auth,
         };
         
-        let client = HysteriaClient::new(config)?;
-        
-        tokio::runtime::Handle::current()
-            .block_on(client.connect_and_authenticate())
-            .map_err(|e| anyhow::anyhow!("认证失败: {}", e))?;
+        let client = Arc::new(HysteriaClient::new(config)?);
+        let client_clone = client.clone();
+        tokio::spawn(async move {
+            if let Err(e) = client_clone.connect_and_authenticate().await {
+                error!(target: "hysteria", "认证失败: {}", e);
+            }
+        });
 
-        Ok(Handler { 
-            client: Arc::new(client)
-        })
+        Ok((Handler { client: client.clone() }, client))
     }
 }
 

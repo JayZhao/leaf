@@ -1,14 +1,18 @@
 use std::sync::Arc;
 use async_trait::async_trait;
-use tokio::sync::Mutex;
 use std::io;
 
 use crate::{proxy::*, session::Session};
-use ::hysteria::{UdpSession, HysteriaClient};
+use ::hysteria::HysteriaClient;
 
 pub struct Handler {
     client: Arc<HysteriaClient>,
-    session: Arc<Mutex<Option<Arc<UdpSession>>>>,
+}
+
+impl Handler {
+    pub fn new(client: Arc<HysteriaClient>) -> Self {
+        Self { client }
+    }
 }
 
 #[async_trait]
@@ -18,7 +22,6 @@ impl OutboundDatagramHandler for Handler {
     }
 
     fn transport_type(&self) -> DatagramTransportType {
-        // Hysteria 使用 QUIC 不可靠数据报
         DatagramTransportType::Unreliable
     }
 
@@ -27,28 +30,15 @@ impl OutboundDatagramHandler for Handler {
         sess: &'a Session,
         _transport: Option<AnyOutboundTransport>,
     ) -> io::Result<AnyOutboundDatagram> {
-        let session = {
-            let mut session_guard = self.session.lock().await;
-            if session_guard.is_none() {
-                *session_guard = Some(
-                    self.client
-                        .get_or_create_session()
-                        .await
-                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
-                );
-            }
-            session_guard.as_ref().unwrap().clone()
-        };
-    
         Ok(Box::new(HysteriaDatagram {
-            session,
+            client: self.client.clone(),
             destination: sess.destination.clone(),
         }))
     }
 }
 
 struct HysteriaDatagram {
-    session: Arc<UdpSession>,
+    client: Arc<HysteriaClient>,
     destination: SocksAddr,
 }
 
@@ -59,10 +49,10 @@ impl OutboundDatagram for HysteriaDatagram {
         Box<dyn OutboundDatagramRecvHalf>,
         Box<dyn OutboundDatagramSendHalf>,
     ) {
-        let session = Arc::new(*self);
+        let datagram = Arc::new(*self);
         (
-            Box::new(DatagramRecvHalf(session.clone())),
-            Box::new(DatagramSendHalf(session))
+            Box::new(DatagramRecvHalf(datagram.clone())),
+            Box::new(DatagramSendHalf(datagram)),
         )
     }
 }
@@ -73,8 +63,8 @@ struct DatagramSendHalf(Arc<HysteriaDatagram>);
 #[async_trait]
 impl OutboundDatagramRecvHalf for DatagramRecvHalf {
     async fn recv_from(&mut self, buf: &mut [u8]) -> io::Result<(usize, SocksAddr)> {
-        let (data, addr) = self.0.session
-            .receive()
+        let (data, addr) = self.0.client
+            .udp_receive()
             .await
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
@@ -100,9 +90,8 @@ impl OutboundDatagramRecvHalf for DatagramRecvHalf {
 #[async_trait]
 impl OutboundDatagramSendHalf for DatagramSendHalf {
     async fn send_to(&mut self, buf: &[u8], _target: &SocksAddr) -> io::Result<usize> {
-        // 使用 UdpSession 的 send 方法发送数据
-        self.0.session
-            .send(buf, &self.0.destination.to_string())
+        self.0.client
+            .udp_send(buf, &self.0.destination.to_string())
             .await
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
             
@@ -110,7 +99,6 @@ impl OutboundDatagramSendHalf for DatagramSendHalf {
     }
 
     async fn close(&mut self) -> io::Result<()> {
-        // UDP 会话不需要显式关闭
         Ok(())
     }
 } 

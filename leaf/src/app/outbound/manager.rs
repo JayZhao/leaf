@@ -260,15 +260,19 @@ impl OutboundManager {
                         config::HysteriaOutboundSettings::parse_from_bytes(&outbound.settings)
                             .map_err(|e| anyhow!("invalid [{}] outbound settings: {}", &tag, e))?;
                     
-                    let stream = Box::new(hysteria::outbound::Handler::new(
+                    let (stream_handler, client) = hysteria::outbound::Handler::new(
                         settings.server_ip,
                         settings.server_port as u16,
                         settings.auth,
-                    )?);
+                    )?;
+
+                    let stream = Box::new(stream_handler);
+                    let datagram = Box::new(hysteria::datagram::Handler::new(client));
 
                     HandlerBuilder::default()
                         .tag(tag.clone())
                         .stream_handler(stream)
+                        .datagram_handler(datagram)
                         .build()
                 }
                 
