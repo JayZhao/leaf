@@ -34,12 +34,8 @@
             "type": "lldb",
             "request": "attach",
             "name": "Attach to RelyVPNTunnel",
-            "program": "${workspaceFolder}/target/debug/leaf",
-            "pid": "${command:pickProcess}",
-            "initCommands": [
-                "process handle -p true -s false -n false SIGPIPE"
-            ],
-            "internalConsoleOptions": "openOnSessionStart",
+            "pid": "${command:pickMyProcess}",
+
         }
     ]
 }

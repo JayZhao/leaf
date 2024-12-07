@@ -4,6 +4,7 @@ use std::io;
 
 use crate::{proxy::*, session::Session};
 use ::hysteria::HysteriaClient;
+use ::hysteria::UdpSession;
 
 pub struct Handler {
     client: Arc<HysteriaClient>,
@@ -30,15 +31,20 @@ impl OutboundDatagramHandler for Handler {
         sess: &'a Session,
         _transport: Option<AnyOutboundTransport>,
     ) -> io::Result<AnyOutboundDatagram> {
+        // Create a new UDP session using the hysteria client
+        let udp_session = self.client.create_session()
+            .await
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
         Ok(Box::new(HysteriaDatagram {
-            client: self.client.clone(),
+            session: udp_session.clone(),
             destination: sess.destination.clone(),
         }))
     }
 }
 
 struct HysteriaDatagram {
-    client: Arc<HysteriaClient>,
+    session: Arc<UdpSession>,
     destination: SocksAddr,
 }
 
@@ -63,8 +69,8 @@ struct DatagramSendHalf(Arc<HysteriaDatagram>);
 #[async_trait]
 impl OutboundDatagramRecvHalf for DatagramRecvHalf {
     async fn recv_from(&mut self, buf: &mut [u8]) -> io::Result<(usize, SocksAddr)> {
-        let (data, addr) = self.0.client
-            .udp_receive()
+        let (data, addr) = self.0.session
+            .receive()
             .await
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
@@ -90,8 +96,8 @@ impl OutboundDatagramRecvHalf for DatagramRecvHalf {
 #[async_trait]
 impl OutboundDatagramSendHalf for DatagramSendHalf {
     async fn send_to(&mut self, buf: &[u8], _target: &SocksAddr) -> io::Result<usize> {
-        self.0.client
-            .udp_send(buf, &self.0.destination.to_string())
+        self.0.session
+            .send(buf, &self.0.destination.to_string())
             .await
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
             

@@ -58,7 +58,6 @@ impl AsyncWrite for HysteriaStream {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<()>> {
-        debug!(target: "hysteria", "[Hysteria客户端] 开始刷新发送流");
         match Pin::new(&mut self.send).poll_flush(cx) {
             Poll::Ready(Ok(())) => {
                 info!(target: "hysteria", "[Hysteria客户端] 刷新成功");
@@ -137,12 +136,6 @@ impl Handler {
         };
         
         let client = Arc::new(HysteriaClient::new(config)?);
-        let client_clone = client.clone();
-        tokio::spawn(async move {
-            if let Err(e) = client_clone.connect_and_authenticate().await {
-                error!(target: "hysteria", "认证失败: {}", e);
-            }
-        });
 
         Ok((Handler { client: client.clone() }, client))
     }

@@ -83,8 +83,7 @@ pub struct Proxy {
     pub quic: Option<bool>,
 
     // hysteria
-    pub hysteria_auth: Option<String>,
-    pub hysteria_sni: Option<String>,
+    pub hysteria_auth: Option<String>
 }
 
 impl Default for Proxy {
@@ -116,7 +115,6 @@ impl Default for Proxy {
             amux_max_lifetime: Some(0),
             quic: Some(false),
             hysteria_auth: None,
-            hysteria_sni: None,
         }
     }
 }
@@ -514,15 +512,13 @@ pub fn from_lines(lines: Vec<io::Result<String>>) -> Result<Config> {
         let params = &params[2..];
 
         // Add support for hysteria protocol
-        if proxy.protocol == "hysteria" && params.len() >= 2 {
+        if proxy.protocol == "hysteria" && params.len() >= 1 {
             proxy.hysteria_auth = Some(params[0].clone()); // Auth token
-            proxy.hysteria_sni = Some(params[1].clone()); // SNI
             
-            println!("[Config] Parsed hysteria proxy: address={}, port={}, auth={}, sni={}", 
+            println!("[Config] Parsed hysteria proxy: address={}, port={}, auth={}", 
                 proxy.address.as_ref().unwrap(),
                 proxy.port.as_ref().unwrap(),
-                proxy.hysteria_auth.as_ref().unwrap(),
-                proxy.hysteria_sni.as_ref().unwrap()
+                proxy.hysteria_auth.as_ref().unwrap()
             );
         }
 
