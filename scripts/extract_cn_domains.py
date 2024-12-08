@@ -13,7 +13,6 @@ from pathlib import Path
 ADDITIONAL_DOMAINS = [
     'icloud.com',
     'apple-cloudkit.com',
-    'wofhwifhafalffagy.com',
     'appstoreconnect.apple.com',
     'cdn-apple.com',
     'netease.im',
@@ -27,6 +26,7 @@ EXCLUDED_DOMAINS = {
     'amazon.com',
     'stackoverflow.com',
     'adobe.com',
+    'ooklaserver.net',
 }
 
 # 如果顶级域名部分是代表国家的,比如sg,tw,hk等等,则跳过, 因为这些域名通常是国外的, 一旦代表国家的时候只有cn可以被接受
@@ -207,7 +207,8 @@ def main():
     script_dir = Path(__file__).parent
     parent_dir = script_dir.parent
 
-    input_file = "site.dat"
+    # 修改这里，让 input_file 使用脚本目录的路径
+    input_file = script_dir / "site.dat"
 
     target_dirs = [
         parent_dir / "target/debug",
@@ -218,6 +219,7 @@ def main():
     print("\n🔍 路径信息:")
     print(f"  • 脚本目录: {script_dir}")
     print(f"  • 父目录: {parent_dir}")
+    print(f"  • site.dat 路径: {input_file}")  # 添加这行来显示实际查找路径
 
     vpn_tunnel_path = script_dir.parent.parent / "TrojanVPN/RelyVPNTunnel"
     print(f"  • 目标 VPN Tunnel 路径: {vpn_tunnel_path}")

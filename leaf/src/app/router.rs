@@ -434,8 +434,6 @@ impl Router {
             return Ok(target.clone());
         }
 
-        info!("🦑 picking route for {}:{}", &sess.network, &sess.destination);
-
         for rule in &self.rules {
             let start = std::time::Instant::now();
             let matched = rule.apply(sess);

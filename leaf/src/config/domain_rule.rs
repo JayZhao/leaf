@@ -204,7 +204,6 @@ impl DomainRule {
     pub fn is_match(&self, domain: &str) -> bool {
         // 首先检查是否是需要排除的国家顶级域名
         if Self::is_excluded_country_tld(domain) {
-            info!("🔍 CNDomain '{}' excluded due to country TLD", domain);
             return false;
         }
 
@@ -223,7 +222,6 @@ impl DomainRule {
             return true;
         }
 
-        info!("🔍 CNDomain '{}' did not match any rules", domain);
         false
     }
 }

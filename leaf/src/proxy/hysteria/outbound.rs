@@ -7,7 +7,7 @@ use std::{
     task::{Context, Poll},
     io,
 };
-use tracing::{debug, info, error};
+use tracing::{info, error};
 
 use crate::{proxy::*, session::Session};
 use ::hysteria::{Config, HysteriaClient, quinn};
@@ -38,17 +38,12 @@ impl AsyncWrite for HysteriaStream {
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
         match Pin::new(&mut self.send).poll_write(cx, buf) {
-            Poll::Ready(Ok(n)) => {
-                Poll::Ready(Ok(n))
-            },
+            Poll::Ready(Ok(n)) => Poll::Ready(Ok(n)),
             Poll::Ready(Err(e)) => {
-                error!(target: "hysteria", "[Hysteria客户端] 写入失败: {}", e);
+                error!(target: "hysteria", "[Hysteria客户端] TCP 连接写入失败: {}", e);
                 Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)))
             },
-            Poll::Pending => {
-                debug!(target: "hysteria", "[Hysteria客户端] 写入操作挂起");
-                Poll::Pending
-            },
+            Poll::Pending => Poll::Pending,
         }
     }
 
@@ -61,11 +56,10 @@ impl AsyncWrite for HysteriaStream {
                 Poll::Ready(Ok(()))
             },
             Poll::Ready(Err(e)) => {
-                error!(target: "hysteria", "[Hysteria客户端] 刷新失败: {}", e);
+                error!(target: "hysteria", "[Hysteria客户端] TCP 连接刷新失败: {}", e);
                 Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)))
             },
             Poll::Pending => {
-                debug!(target: "hysteria", "[Hysteria客户端] 刷新操作挂起");
                 Poll::Pending
             },
         }
@@ -75,18 +69,17 @@ impl AsyncWrite for HysteriaStream {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<()>> {
-        debug!(target: "hysteria", "[Hysteria客户端] 开始关闭发送流");
         match Pin::new(&mut self.send).poll_shutdown(cx) {
             Poll::Ready(Ok(())) => {
-                info!(target: "hysteria", "[Hysteria客户端] 关闭成功");
+                info!(target: "hysteria", "[Hysteria客户端] TCP 连接关闭成功");
                 Poll::Ready(Ok(()))
             },
             Poll::Ready(Err(e)) => {
-                error!(target: "hysteria", "[Hysteria客户端] 关闭失败: {}", e);
+                error!(target: "hysteria", "[Hysteria客户端] TCP 连接关闭失败: {}", e);
                 Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)))
             },
             Poll::Pending => {
-                debug!(target: "hysteria", "[Hysteria客户端] 关闭操作挂起");
+                info!(target: "hysteria", "[Hysteria客户端] TCP 连接关闭操作挂起");
                 Poll::Pending
             },
         }

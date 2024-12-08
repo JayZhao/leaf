@@ -6,7 +6,7 @@ use std::time::Duration;
 use async_recursion::async_recursion;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     app::SyncDnsClient,
@@ -126,21 +126,19 @@ impl Dispatcher {
             let router = self.router.read().await;
             match router.pick_route(&sess).await {
                 Ok(tag) => {
-                    debug!(
-                        "picked route [{}] for {} -> {}",
-                        tag, &sess.source, &sess.destination
+                    info!(
+                        "路由选择成功 [{}] | 会话信息: {{ 来源: {}, 目标: {}, 网络类型: {}, 入站标签: {} }}",
+                        tag, &sess.source, &sess.destination, &sess.network, &sess.inbound_tag
                     );
                     tag.to_owned()
                 }
                 Err(err) => {
-                    debug!("pick route failed: {}", err);
                     if let Some(tag) = self.outbound_manager.read().await.default_handler() {
                         info!(
-                            "⚡ using default route [{}] for [{}]",
-                            tag, &sess.destination
+                            "⚡ 使用默认路由 [{}] | 会话信息: {{ 目标: {}, 网络类型: {} }}",
+                            tag, &sess.destination, &sess.network
                         );
                         
-                        // Cache the default route using the same router lock
                         router.cache_route(
                             sess.destination.to_string(),
                             tag.clone()
@@ -148,7 +146,10 @@ impl Dispatcher {
                         
                         tag
                     } else {
-                        warn!("can not find any handlers");
+                        error!(
+                            "未找到可用的处理程序 | 会话信息: {{ 来源: {}, 目标: {}, 网络类型: {} }}",
+                            &sess.source, &sess.destination, &sess.network
+                        );
                         return;
                     }
                 }
@@ -263,28 +264,33 @@ impl Dispatcher {
         &self,
         mut sess: Session,
     ) -> io::Result<Box<dyn OutboundDatagram>> {
-        debug!("dispatching {}:{}", &sess.network, &sess.destination);
+
         let outbound = {
             let router = self.router.read().await;
             match router.pick_route(&sess).await {
                 Ok(tag) => {
-                    debug!(
-                        "picked route [{}] for {} -> {}",
-                        tag, &sess.source, &sess.destination
+                    info!(
+                        "路由选择成功 [{}] | 会话信息: {{ 来源: {}, 目标: {}, 网络类型: {} }}",
+                        tag, &sess.source, &sess.destination, &sess.network
                     );
                     tag.to_owned()
                 }
-                Err(err) => {
-                    debug!("pick route failed: {}", err);
+                Err(_err) => {
                     if let Some(tag) = self.outbound_manager.read().await.default_handler() {
-                        debug!(
-                            "picked default route [{}] for {} -> {}",
-                            tag, &sess.source, &sess.destination
+                        info!(
+                            "⚡ 使用默认路由 [{}] | 会话信息: {{ 来源: {}, 目标: {}, 网络类型: {} }}",
+                            tag, &sess.source, &sess.destination, &sess.network
                         );
+
+                        router.cache_route(
+                            sess.destination.to_string(),
+                            tag.clone()
+                        );
+
                         tag
                     } else {
-                        warn!("no handler found");
-                        return Err(io::Error::new(ErrorKind::Other, "no available handler"));
+                        error!("未找到可用的处理程序");
+                        return Err(io::Error::new(ErrorKind::Other, "没有可用的处理程序"));
                     }
                 }
             }
@@ -295,17 +301,19 @@ impl Dispatcher {
         let h = if let Some(h) = self.outbound_manager.read().await.get(&outbound) {
             h
         } else {
-            warn!("handler not found");
-            return Err(io::Error::new(ErrorKind::Other, "handler not found"));
+            error!("未找到处理程序 [{}] | 会话信息: {{ 来源: {}, 目标: {}, 网络类型: {} }}", 
+                outbound, &sess.source, &sess.destination, &sess.network);
+            return Err(io::Error::new(ErrorKind::Other, "未找到处理程序"));
         };
 
         let handshake_start = tokio::time::Instant::now();
         let transport =
             crate::proxy::connect_datagram_outbound(&sess, self.dns_client.clone(), &h).await?;
-        debug!(
-            "handling {}:{} with {}",
-            &sess.network,
+        info!(
+            "正在处理数据报文 | 会话信息: {{ 来源: {}, 目标: {}, 网络类型: {}, 处理程序: [{}] }}",
+            &sess.source,
             &sess.destination,
+            &sess.network,
             h.tag()
         );
         match h.datagram()?.handle(&sess, transport).await {
@@ -313,7 +321,13 @@ impl Dispatcher {
             Ok(mut d) => {
                 let elapsed = tokio::time::Instant::now().duration_since(handshake_start);
 
-                log_request(&sess, h.tag(), h.color(), Some(elapsed.as_millis()));
+                info!(
+                    "数据报文处理成功 | 会话信息: {{ 来源: {}, 目标: {}, 处理程序: [{}], 握手时间: {}ms }}",
+                    &sess.source,
+                    &sess.destination,
+                    h.tag(),
+                    elapsed.as_millis()
+                );
 
                 #[cfg(feature = "stat")]
                 if *crate::option::ENABLE_STATS {
@@ -327,12 +341,13 @@ impl Dispatcher {
                 Ok(d)
             }
             Err(e) => {
-                debug!(
-                    "dispatch udp {} -> {} to [{}] failed: {}",
+                error!(
+                    "数据报文处理失败: {} | 会话信息: {{ 来源: {}, 目标: {}, 网络类型: {}, 处理程序: [{}] }}",
+                    e,
                     &sess.source,
                     &sess.destination,
-                    &h.tag(),
-                    e
+                    &sess.network,
+                    h.tag()
                 );
                 log_request(&sess, h.tag(), h.color(), None);
                 Err(e)
