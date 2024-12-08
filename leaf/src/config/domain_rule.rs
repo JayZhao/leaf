@@ -204,13 +204,13 @@ impl DomainRule {
     pub fn is_match(&self, domain: &str) -> bool {
         // 首先检查是否是需要排除的国家顶级域名
         if Self::is_excluded_country_tld(domain) {
-            info!("❌ Domain '{}' excluded due to country TLD", domain);
+            info!("🔍 CNDomain '{}' excluded due to country TLD", domain);
             return false;
         }
 
         // 如果是以 .cn 结尾的域名，则直接返回 true
         if domain.ends_with(".cn") {
-            info!("✅ Domain '{}' matched in .cn suffix", domain);
+            info!("✅ CNDomain '{}' matched in .cn suffix", domain);
             return true;
         }
 
@@ -219,11 +219,11 @@ impl DomainRule {
 
         // 使用二分查找
         if self.binary_domains.binary_search(&domain_value).is_ok() {
-            info!("✅ Domain '{}' matched in binary domain list (value: {})", domain, domain_value);
+            info!("✅ CNDomain '{}' matched in binary domain list (value: {})", domain, domain_value);
             return true;
         }
 
-        info!("❌ Domain '{}' did not match any rules", domain);
+        info!("🔍 CNDomain '{}' did not match any rules", domain);
         false
     }
 }

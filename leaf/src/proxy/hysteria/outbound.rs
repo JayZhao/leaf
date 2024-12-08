@@ -37,10 +37,8 @@ impl AsyncWrite for HysteriaStream {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
-        debug!(target: "hysteria", "[Hysteria客户端] 开始向发送流中写入数据");
         match Pin::new(&mut self.send).poll_write(cx, buf) {
             Poll::Ready(Ok(n)) => {
-                info!(target: "hysteria", "[Hysteria客户端] 成功写入 {} 字节", n);
                 Poll::Ready(Ok(n))
             },
             Poll::Ready(Err(e)) => {
@@ -60,7 +58,6 @@ impl AsyncWrite for HysteriaStream {
     ) -> Poll<io::Result<()>> {
         match Pin::new(&mut self.send).poll_flush(cx) {
             Poll::Ready(Ok(())) => {
-                info!(target: "hysteria", "[Hysteria客户端] 刷新成功");
                 Poll::Ready(Ok(()))
             },
             Poll::Ready(Err(e)) => {

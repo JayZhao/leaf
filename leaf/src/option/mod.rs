@@ -35,17 +35,17 @@ where
 lazy_static! {
     /// Maximum number of proxy outbound TCP connections allowed at the same time.
     pub static ref ENDPOINT_TCP_CONCURRENCY: usize = {
-        get_env_var_or("ENDPOINT_TCP_CONCURRENCY", 45)
+        get_env_var_or("ENDPOINT_TCP_CONCURRENCY", 10240)
     };
 
     /// Maximum number of direct outbound TCP connections allowed at the same time.
     pub static ref DIRECT_TCP_CONCURRENCY: usize = {
-        get_env_var_or("DIRECT_TCP_CONCURRENCY", 64)
+        get_env_var_or("DIRECT_TCP_CONCURRENCY", 10240)
     };
 
     /// DNS cache size in the built-in DNS client.
     pub static ref DNS_CACHE_SIZE: usize = {
-        get_env_var_or("DNS_CACHE_SIZE", 64)
+        get_env_var_or("DNS_CACHE_SIZE", 5120)
     };
 }
 
@@ -53,17 +53,17 @@ lazy_static! {
 lazy_static! {
     /// Maximum number of proxy outbound TCP connections allowed at the same time.
     pub static ref ENDPOINT_TCP_CONCURRENCY: usize = {
-        get_env_var_or("ENDPOINT_TCP_CONCURRENCY", 1024)
+        get_env_var_or("ENDPOINT_TCP_CONCURRENCY", 10240)
     };
 
     /// Maximum number of direct outbound TCP connections allowed at the same time.
     pub static ref DIRECT_TCP_CONCURRENCY: usize = {
-        get_env_var_or("DIRECT_TCP_CONCURRENCY", 1024)
+        get_env_var_or("DIRECT_TCP_CONCURRENCY", 10240)
     };
 
     /// DNS cache size in the built-in DNS client.
     pub static ref DNS_CACHE_SIZE: usize = {
-        get_env_var_or("DNS_CACHE_SIZE", 512)
+        get_env_var_or("DNS_CACHE_SIZE", 5120)
     };
 }
 
@@ -144,40 +144,40 @@ lazy_static! {
     };
 
     pub static ref NETSTACK_OUTPUT_CHANNEL_SIZE: usize = {
-        get_env_var_or("NETSTACK_OUTPUT_CHANNEL_SIZE", 512)
+        get_env_var_or("NETSTACK_OUTPUT_CHANNEL_SIZE", 5120)
     };
 
     pub static ref NETSTACK_UDP_UPLINK_CHANNEL_SIZE: usize = {
-        get_env_var_or("NETSTACK_UDP_UPLINK_CHANNEL_SIZE", 256)
+        get_env_var_or("NETSTACK_UDP_UPLINK_CHANNEL_SIZE", 2560)
     };
 
     pub static ref UDP_UPLINK_CHANNEL_SIZE: usize = {
-        get_env_var_or("UDP_UPLINK_CHANNEL_SIZE", 256)
+        get_env_var_or("UDP_UPLINK_CHANNEL_SIZE", 2560)
     };
 
     pub static ref UDP_DOWNLINK_CHANNEL_SIZE: usize = {
-        get_env_var_or("UDP_DOWNLINK_CHANNEL_SIZE", 256)
+        get_env_var_or("UDP_DOWNLINK_CHANNEL_SIZE", 2560)
     };
 
     pub static ref QUIC_ACCEPT_CHANNEL_SIZE: usize = {
-        get_env_var_or("QUIC_ACCEPT_CHANNEL_SIZE", 1024)
+        get_env_var_or("QUIC_ACCEPT_CHANNEL_SIZE", 10240)
     };
 
     pub static ref AMUX_ACCEPT_CHANNEL_SIZE: usize = {
-        get_env_var_or("AMUX_ACCEPT_CHANNEL_SIZE", 1024)
+        get_env_var_or("AMUX_ACCEPT_CHANNEL_SIZE", 10240)
     };
 
     pub static ref AMUX_STREAM_CHANNEL_SIZE: usize = {
-        get_env_var_or("AMUX_STREAM_CHANNEL_SIZE", 16)
+        get_env_var_or("AMUX_STREAM_CHANNEL_SIZE", 160)
     };
 
     pub static ref AMUX_FRAME_CHANNEL_SIZE: usize = {
-        get_env_var_or("AMUX_FRAME_CHANNEL_SIZE", 32)
+        get_env_var_or("AMUX_FRAME_CHANNEL_SIZE", 320)
     };
 
     /// Buffer size for UDP datagrams receiving/sending, in KB.
     pub static ref DATAGRAM_BUFFER_SIZE: usize = {
-        get_env_var_or("DATAGRAM_BUFFER_SIZE", 2)
+        get_env_var_or("DATAGRAM_BUFFER_SIZE", 20)
     };
 
     /// The timeout for an accepted inbound TCP connection to finish the proxy
