@@ -132,7 +132,7 @@ impl Dispatcher {
                     );
                     tag.to_owned()
                 }
-                Err(err) => {
+                Err(_err) => {
                     if let Some(tag) = self.outbound_manager.read().await.default_handler() {
                         info!(
                             "⚡ 使用默认路由 [{}] | 会话信息: {{ 目标: {}, 网络类型: {} }}",

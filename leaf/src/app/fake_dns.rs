@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr};
 
 use anyhow::{anyhow, Result};
 use tokio::sync::RwLock;
-use tracing::debug;
+use tracing::{info, error};
 use trust_dns_proto::op::{
     header::MessageType, op_code::OpCode, response_code::ResponseCode, Message,
 };
@@ -11,6 +11,7 @@ use trust_dns_proto::rr::{
     dns_class::DNSClass, rdata, record_data::RData, record_type::RecordType, resource::Record,
 };
 
+#[derive(Debug)]
 pub enum FakeDnsMode {
     Include,
     Exclude,
@@ -59,6 +60,7 @@ impl FakeDnsImpl {
     pub(self) fn new(mode: FakeDnsMode) -> Self {
         let min_cursor = Self::ip_to_u32(&Ipv4Addr::new(198, 18, 0, 0));
         let max_cursor = Self::ip_to_u32(&Ipv4Addr::new(198, 18, 255, 255));
+        info!("[FakeDNS] 初始化 | 模式: {:?} | IP范围: 198.18.0.0 - 198.18.255.255", mode);
         Self {
             ip_to_domain: HashMap::new(),
             domain_to_ip: HashMap::new(),
@@ -72,46 +74,60 @@ impl FakeDnsImpl {
     }
 
     pub(self) fn add_filter(&mut self, filter: String) {
+        info!("[FakeDNS] 添加过滤规则: {}", filter);
         self.filters.push(filter);
     }
 
     pub(self) fn query_domain(&self, ip: &IpAddr) -> Option<String> {
         let ip = match ip {
             IpAddr::V4(ip) => ip,
-            _ => return None,
+            _ => {
+                info!("[FakeDNS] 查询域名失败: 不支持的IP类型 {:?}", ip);
+                return None;
+            }
         };
-        self.ip_to_domain.get(&Self::ip_to_u32(ip)).cloned()
+        let result = self.ip_to_domain.get(&Self::ip_to_u32(ip)).cloned();
+        info!("[FakeDNS] 查询域名 | IP: {} | 结果: {:?}", ip, result);
+        result
     }
 
     pub(self) fn query_fake_ip(&self, domain: &str) -> Option<IpAddr> {
-        self.domain_to_ip
+        let result = self.domain_to_ip
             .get(domain)
-            .map(|v| IpAddr::V4(Self::u32_to_ip(v.to_owned())))
+            .map(|v| IpAddr::V4(Self::u32_to_ip(v.to_owned())));
+        info!("[FakeDNS] 查询假IP | 域名: {} | 结果: {:?}", domain, result);
+        result
     }
 
     pub(self) fn generate_fake_response(&mut self, request: &[u8]) -> Result<Vec<u8>> {
-        let req = Message::from_vec(request)?;
+        let req = match Message::from_vec(request) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("[FakeDNS] DNS请求解析失败: {}", e);
+                return Err(anyhow!("DNS请求解析失败: {}", e));
+            }
+        };
 
         if req.queries().is_empty() {
+            error!("[FakeDNS] DNS请求中没有查询内容");
             return Err(anyhow!("no queries in this DNS request"));
         }
 
         let query = &req.queries()[0];
+        info!("[FakeDNS] 收到DNS查询 | 类型: {:?} | 类: {:?}", query.query_type(), query.query_class());
+
         if query.query_class() != DNSClass::IN {
+            error!("[FakeDNS] 不支持的查询类: {}", query.query_class());
             return Err(anyhow!("unsupported query class {}", query.query_class()));
         }
 
         let t = query.query_type();
         if t != RecordType::A && t != RecordType::AAAA && t != RecordType::HTTPS {
-            return Err(anyhow!(
-                "unsupported query record type {:?}",
-                query.query_type()
-            ));
+            error!("[FakeDNS] 不支持的记录类型: {:?}", t);
+            return Err(anyhow!("unsupported query record type {:?}", t));
         }
 
         let raw_name = query.name();
-
-        // TODO check if a valid domain
         let domain = if raw_name.is_fqdn() {
             let fqdn = raw_name.to_ascii();
             fqdn[..fqdn.len() - 1].to_string()
@@ -119,25 +135,28 @@ impl FakeDnsImpl {
             raw_name.to_ascii()
         };
 
+        info!("[FakeDNS] 处理域名: {}", domain);
+
         if !self.accept(&domain) {
+            error!("[FakeDNS] 域名未被接受: {}", domain);
             return Err(anyhow!("domain {} not accepted", domain));
         }
 
         let ip = if let Some(ip) = self.query_fake_ip(&domain) {
             match ip {
                 IpAddr::V4(a) => a,
-                _ => return Err(anyhow!("unexpected Ipv6 fake IP")),
+                _ => {
+                    error!("[FakeDNS] 意外的IPv6假IP");
+                    return Err(anyhow!("unexpected Ipv6 fake IP"));
+                }
             }
         } else {
             let ip = self.allocate_ip(&domain)?;
-            debug!("allocate {} for {}", &ip, &domain);
+            info!("[FakeDNS] 为域名分配新IP | 域名: {} | IP: {}", domain, ip);
             ip
         };
 
         let mut resp = Message::new();
-
-        // sets the response according to request
-        // https://github.com/miekg/dns/blob/f515aa579d28efa1af67d9a62cc57f2dfe59da76/defaults.go#L15
         resp.set_id(req.id())
             .set_message_type(MessageType::Response)
             .set_op_code(req.op_code());
@@ -159,6 +178,7 @@ impl FakeDnsImpl {
                 .set_dns_class(DNSClass::IN)
                 .set_data(Some(RData::A(rdata::A(ip))));
             resp.add_answer(ans);
+            info!("[FakeDNS] 生成DNS应答 | 域名: {} | IP: {} | TTL: {}", domain, ip, self.ttl);
         }
 
         Ok(resp.to_vec()?)
@@ -175,13 +195,14 @@ impl FakeDnsImpl {
 
     fn allocate_ip(&mut self, domain: &str) -> Result<Ipv4Addr> {
         if let Some(prev_domain) = self.ip_to_domain.insert(self.cursor, domain.to_owned()) {
-            // Remove the entry in the reverse map to make sure we won't have
-            // multiple domains point to a same IP.
+            info!("[FakeDNS] IP重用 | 旧域名: {} | 新域名: {} | IP: {}", 
+                prev_domain, domain, Self::u32_to_ip(self.cursor));
             self.domain_to_ip.remove(&prev_domain);
         }
         self.domain_to_ip.insert(domain.to_owned(), self.cursor);
         let ip = Self::u32_to_ip(self.cursor);
         self.prepare_next_cursor()?;
+        info!("[FakeDNS] 分配IP | 域名: {} | IP: {}", domain, ip);
         Ok(ip)
     }
 
@@ -204,10 +225,11 @@ impl FakeDnsImpl {
     }
 
     fn accept(&self, domain: &str) -> bool {
-        match self.mode {
+        let result = match self.mode {
             FakeDnsMode::Exclude => {
                 for d in &self.filters {
                     if domain.contains(d) || d == "*" {
+                        info!("[FakeDNS] 域名被排除 | 域名: {} | 匹配规则: {}", domain, d);
                         return false;
                     }
                 }
@@ -216,12 +238,15 @@ impl FakeDnsImpl {
             FakeDnsMode::Include => {
                 for d in &self.filters {
                     if domain.contains(d) || d == "*" {
+                        info!("[FakeDNS] 域名被包含 | 域名: {} | 匹配规则: {}", domain, d);
                         return true;
                     }
                 }
                 false
             }
-        }
+        };
+        info!("[FakeDNS] 域名检查结果 | 域名: {} | 模式: {:?} | 结果: {}", domain, self.mode, result);
+        result
     }
 
     fn u32_to_ip(ip: u32) -> Ipv4Addr {

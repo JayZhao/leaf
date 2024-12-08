@@ -31,6 +31,12 @@ async fn handle_inbound_stream(
     dispatcher: Arc<Dispatcher>,
     fakedns: Arc<FakeDns>,
 ) {
+    info!(
+        "[TUN] 接收到新的 TCP 连接 | 源地址: {}:{} -> 目标地址: {}:{}",
+        local_addr.ip(), local_addr.port(),
+        remote_addr.ip(), remote_addr.port()
+    );
+    
     let mut sess = Session {
         network: Network::Tcp,
         source: local_addr,
@@ -41,7 +47,9 @@ async fn handle_inbound_stream(
     };
     // Whether to override the destination according to Fake DNS.
     if fakedns.is_fake_ip(&remote_addr.ip()).await {
+        info!("[TUN] 检测到假IP: {} | 端口: {}", remote_addr.ip(), remote_addr.port());
         if let Some(domain) = fakedns.query_domain(&remote_addr.ip()).await {
+            info!("[TUN] 假IP转换成功 | IP: {} -> 域名: {}", remote_addr.ip(), &domain);
             sess.destination = SocksAddr::Domain(domain, remote_addr.port());
         } else {
             // Although requests targeting fake IPs are assumed
@@ -107,6 +115,14 @@ async fn handle_inbound_datagram(
                 warn!("Failed to accept a datagram from netstack: {}", e);
             }
             Ok((data, src_addr, dst_addr)) => {
+                // 在这里添加详细日志
+                info!(
+                    "[TUN] 接收到新的 UDP 数据包 | 源地址: {}:{} -> 目标地址: {}:{} | 数据大小: {} 字节",
+                    src_addr.ip(), src_addr.port(),
+                    dst_addr.ip(), dst_addr.port(),
+                    data.len()
+                );
+                
                 // Fake DNS logic.
                 if dst_addr.port() == 53 {
                     match fakedns.generate_fake_response(&data).await {
@@ -274,6 +290,11 @@ pub fn new(
         let fakedns_cloned = fakedns.clone();
         futs.push(Box::pin(async move {
             while let Some((stream, local_addr, remote_addr)) = tcp_listener.next().await {
+                info!(
+                    "[TUN] TCP连接进入处理流程 | 源地址: {}:{} -> 目标地址: {}:{}", 
+                    local_addr.ip(), local_addr.port(),
+                    remote_addr.ip(), remote_addr.port()
+                );
                 tokio::spawn(handle_inbound_stream(
                     stream,
                     local_addr,
