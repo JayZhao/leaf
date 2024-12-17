@@ -157,7 +157,7 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = "0.3"
 chrono = "0.4"
-colored = "2.1"
+colored = "2.2"
 
 # Router
 maxminddb = { version = "0.24", features = ["mmap"] }
@@ -197,8 +197,8 @@ openssl-probe = { version = "0.1", optional = true }
 tokio-openssl = { version = "0.6", optional = true }
 
 # WebSocket
-tungstenite = { version = "0.24", default-features = false, optional = true }
-tokio-tungstenite = { version = "0.24", optional = true }
+tungstenite = { version = "0.25", default-features = false, optional = true }
+tokio-tungstenite = { version = "0.25", optional = true }
 
 # WebSocket
 url = { version = "2.5", optional = true }
@@ -268,5 +268,5 @@ tokio = { version = "1", features = ["fs", "sync", "io-util", "net", "time", "rt
 
 [build-dependencies]
 cc = "1.2"
-bindgen = "0.70"
+bindgen = "0.71"
 protobuf-codegen = "=3.6.0"

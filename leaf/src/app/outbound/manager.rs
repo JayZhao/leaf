@@ -264,6 +264,7 @@ impl OutboundManager {
                         settings.server_ip,
                         settings.server_port as u16,
                         settings.auth,
+                        settings.cc_rx,
                     )?;
 
                     let stream = Box::new(stream_handler);

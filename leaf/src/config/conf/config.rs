@@ -83,7 +83,8 @@ pub struct Proxy {
     pub quic: Option<bool>,
 
     // hysteria
-    pub hysteria_auth: Option<String>
+    pub hysteria_auth: Option<String>,
+    pub hysteria_cc_rx: Option<u64>,
 }
 
 impl Default for Proxy {
@@ -115,6 +116,7 @@ impl Default for Proxy {
             amux_max_lifetime: Some(0),
             quic: Some(false),
             hysteria_auth: None,
+            hysteria_cc_rx: Some(0),
         }
     }
 }
@@ -514,11 +516,12 @@ pub fn from_lines(lines: Vec<io::Result<String>>) -> Result<Config> {
         // Add support for hysteria protocol
         if proxy.protocol == "hysteria" && params.len() >= 1 {
             proxy.hysteria_auth = Some(params[0].clone()); // Auth token
-            
-            println!("[Config] Parsed hysteria proxy: address={}, port={}, auth={}", 
+            proxy.hysteria_cc_rx = Some(params[1].parse::<u64>().unwrap_or(0)); // Parse string to u64
+            println!("[Config] Parsed hysteria proxy: address={}, port={}, auth={}, cc_rx={}", 
                 proxy.address.as_ref().unwrap(),
                 proxy.port.as_ref().unwrap(),
-                proxy.hysteria_auth.as_ref().unwrap()
+                proxy.hysteria_auth.as_ref().unwrap(),
+                proxy.hysteria_cc_rx.unwrap()
             );
         }
 
@@ -1218,6 +1221,9 @@ pub fn to_internal(conf: &mut Config) -> Result<internal::Config> {
                     }
                     if let Some(ext_auth) = &ext_proxy.hysteria_auth {
                         settings.auth = ext_auth.clone();
+                    }
+                    if let Some(ext_cc_rx) = &ext_proxy.hysteria_cc_rx {
+                        settings.cc_rx = *ext_cc_rx as u64;
                     }
                     let settings = settings.write_to_bytes().unwrap();
                     outbound.settings = settings;

@@ -3689,6 +3689,8 @@ pub struct HysteriaOutboundSettings {
     pub server_port: u32,
     // @@protoc_insertion_point(field:HysteriaOutboundSettings.auth)
     pub auth: ::std::string::String,
+    // @@protoc_insertion_point(field:HysteriaOutboundSettings.cc_rx)
+    pub cc_rx: u64,
     // special fields
     // @@protoc_insertion_point(special_field:HysteriaOutboundSettings.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -3725,6 +3727,9 @@ impl ::protobuf::Message for HysteriaOutboundSettings {
                 26 => {
                     self.auth = is.read_string()?;
                 },
+                32 => {
+                    self.cc_rx = is.read_uint64()?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -3746,6 +3751,9 @@ impl ::protobuf::Message for HysteriaOutboundSettings {
         if !self.auth.is_empty() {
             my_size += ::protobuf::rt::string_size(3, &self.auth);
         }
+        if self.cc_rx != 0 {
+            my_size += ::protobuf::rt::uint64_size(4, self.cc_rx);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -3760,6 +3768,9 @@ impl ::protobuf::Message for HysteriaOutboundSettings {
         }
         if !self.auth.is_empty() {
             os.write_string(3, &self.auth)?;
+        }
+        if self.cc_rx != 0 {
+            os.write_uint64(4, self.cc_rx)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -3781,6 +3792,7 @@ impl ::protobuf::Message for HysteriaOutboundSettings {
         self.server_ip.clear();
         self.server_port = 0;
         self.auth.clear();
+        self.cc_rx = 0;
         self.special_fields.clear();
     }
 
@@ -3789,6 +3801,7 @@ impl ::protobuf::Message for HysteriaOutboundSettings {
             server_ip: ::std::string::String::new(),
             server_port: 0,
             auth: ::std::string::String::new(),
+            cc_rx: 0,
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance

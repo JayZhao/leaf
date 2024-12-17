@@ -103,10 +103,11 @@ impl OutboundStreamHandler for Handler {
             SocksAddr::Domain(domain, port) => format!("{}:{}", domain, port),
         };
     
-        let (send, recv) = self.client.tcp_connect(&dest)
+        let bi_stream = self.client.tcp_connect(&dest)
             .await
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
     
+        let (send, recv) = bi_stream.split();
         Ok(Box::new(HysteriaStream { send, recv }))
     }
 }
@@ -116,6 +117,7 @@ impl Handler {
         server_ip: String,
         server_port: u16,
         auth: String,
+        cc_rx: u64,
     ) -> Result<(Self, Arc<HysteriaClient>)> {
         info!(target: "hysteria", "[Hysteria客户端] 创建新Handler: {}:{}", server_ip, server_port);
         
@@ -123,18 +125,11 @@ impl Handler {
             server_ip,
             server_port,
             auth,
+            cc_rx,
         };
         
         let client = Arc::new(HysteriaClient::new(config)?);
 
         Ok((Handler { client: client.clone() }, client))
-    }
-}
-
-impl Drop for Handler {
-    fn drop(&mut self) {
-        tokio::runtime::Handle::current().block_on(async {
-            self.client.shutdown().await;
-        });
     }
 }

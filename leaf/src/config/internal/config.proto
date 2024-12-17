@@ -229,6 +229,7 @@ message HysteriaOutboundSettings {
     string server_ip = 1;        
     uint32 server_port = 2;         
     string auth = 3; 
+    uint64 cc_rx = 4;
 }
 
 message Outbound {
